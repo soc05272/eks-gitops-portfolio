@@ -1,0 +1,54 @@
+# CI: main 브랜치 push → 이미지 빌드 → ECR 푸시 → 매니페스트 repo의 이미지 태그 업데이트
+# CD는 ArgoCD가 매니페스트 repo를 감시하며 수행 (ADR-001)
+name: build-and-push
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**"]
+
+permissions:
+  id-token: write # OIDC로 AWS 인증 (access key를 GitHub에 저장하지 않음)
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: eks-gitops-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN }} # TODO: OIDC용 IAM Role 생성 후 등록
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./app
+          docker push $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # GitOps: 매니페스트 repo의 이미지 태그를 새 SHA로 교체 → ArgoCD가 감지해 배포
+      - name: Update manifest repo
+        env:
+          GH_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }} # TODO: fine-grained PAT 등록
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          git clone https://x-access-token:${GH_TOKEN}@github.com/<YOUR-ID>/eks-gitops-manifests.git
+          cd eks-gitops-manifests
+          # TODO: kustomize edit set image 또는 yq로 태그 교체
+          # kustomize edit set image app=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git commit -am "chore: update image tag to $IMAGE_TAG" && git push
