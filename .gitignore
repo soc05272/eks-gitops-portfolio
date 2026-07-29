@@ -11,6 +11,10 @@ crash.log
 tfplan
 *.tfplan
 
+# 백엔드 버킷명(계정 고유 값) — example만 커밋한다
+backend.hcl
+!backend.hcl.example
+
 # 자격증명 — 절대 커밋 금지
 *.pem
 *.csv

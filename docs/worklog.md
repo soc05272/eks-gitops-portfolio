@@ -47,9 +47,10 @@ AWS 계정 생성. 코드를 먼저 다 짜고 한 번에 올리는 방식으로
 
 **원격 state 전환**
 
-- S3 버킷 `eks-gitops-tfstate-<AWS-ACCOUNT-ID>` 생성 (21:59)
+- state용 S3 버킷 생성 (21:59). 버킷명에 계정 ID가 들어가므로 코드에는 두지 않고
+  부분 백엔드 구성(`backend.hcl`, gitignore 대상)으로 분리했다
 - `versions.tf`의 주석 처리돼 있던 backend 블록 활성화
-- `terraform init` → 프로바이더 5종(aws, cloudinit, null, time, tls) 설치
+- `terraform init -backend-config=backend.hcl` → 프로바이더 5종(aws, cloudinit, null, time, tls) 설치
 - `terraform plan -out=tfplan` → **64 to add, 0 to change, 0 to destroy**
 
 **초기 커밋 `b365223`** (22:19) — 18파일 584줄
@@ -200,6 +201,10 @@ Paid Plan 전환으로 지출 상한이 없어졌으므로 도입 우선순위�
 ## 운영 메모
 
 ```bash
+# 최초 1회 (또는 새로 clone한 경우)
+cp terraform/backend.hcl.example terraform/backend.hcl   # 실제 버킷명 기입
+cd terraform && terraform init -backend-config=backend.hcl
+
 # 재개
 cd terraform && terraform plan -out=tfplan && terraform apply tfplan   # 15~20분
 

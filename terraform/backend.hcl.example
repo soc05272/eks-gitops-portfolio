@@ -1,0 +1,4 @@
+# terraform init -backend-config=backend.hcl
+# 이 파일을 backend.hcl로 복사한 뒤 실제 S3 버킷명을 채운다.
+# 버킷명에 계정 ID 등 계정 고유 값이 들어가므로 backend.hcl은 커밋하지 않는다.
+bucket = "<YOUR-TFSTATE-BUCKET>"
