@@ -87,11 +87,19 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
 | **c7i-flex.large** | 2 / 4GB | ~$0.018 | **8GB** |
 | m7i-flex.large | 2 / 8GB | ~$0.044 | 16GB |
 
-`c7i-flex.large`가 원래 쓰려던 `t3.medium`과 총 메모리(8GB)·비용($0.036 → $0.037)이
-사실상 동일해 대체재로 적합하다. `variables.tf`의 `node_instance_type` 기본값만 바꾸면 된다.
+두 가지 대응을 검토했다.
 
-ARM 타입(`t4g.small`)이 더 저렴하지만 채택하지 않았다. `ami_type`을 `AL2023_ARM_64_STANDARD`로
-바꿔야 하고, GitHub Actions에서 빌드하는 앱 이미지도 arm64로 빌드해야 해서 CI까지 연쇄 수정이 필요하다.
+1. **우회 — 노드 타입을 `c7i-flex.large`로 변경**: `t3.medium`과 총 메모리(8GB)·비용($0.036 →
+   $0.037)이 사실상 동일한 대체재. 그러나 정책 안에서의 회피일 뿐이고, Spot + free-tier-eligible
+   조합이 실제로 기동되는지 미검증이었으며, 이후 주차의 ALB·EBS에서 같은 계정 정책에 또 막힐
+   위험이 남는다. (ARM `t4g.small`은 더 저렴하지만 AMI와 CI 빌드 아키텍처까지 연쇄 수정이라 제외)
+2. **근본 해결 — 계정을 Paid Plan으로 전환**: 인스턴스 타입 제약 자체가 사라진다. 크레딧은
+   이월되고($119.45), 12개월 프리티어가 추가로 열려 시간당 비용도 오히려 낮아진다.
+
+**→ 2번 채택.** `aws freetier upgrade-account-plan` API가 존재하지만 결제 관련 변경이라 콘솔에서
+직접 전환했고, `accountPlanType: FREE → PAID` 전환을 API로 검증했다. **코드는 한 줄도 바꾸지
+않았고** `t3.medium` 그대로 재시도한 2차 apply가 성공했다(노드그룹 `ACTIVE`, 노드 2대 `Ready`).
+이후 destroy/apply 재기동에서도 재현 확인.
 
 **배운 점**
 
