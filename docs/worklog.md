@@ -255,21 +255,37 @@ GET  /summaries → RDS 조회로 방금 저장한 요약 반환 ✅
 ```
 
 readiness 프로브(`/healthz`) 통과 = 앱 시작 시 RDS 연결·테이블 생성도 성공.
-남은 것은 **ALB Ingress Controller**(IRSA IAM Role + Helm) — 이것까지 되면 2주차 완료.
+
+### ALB Ingress Controller — 외부 노출 (2주차 완료)
+
+- **IRSA Role** (`terraform/alb-controller.tf`): 컨트롤러 파드에만 ALB 생성 권한을 부여.
+  노드 Role에 얹으면 노드 위 모든 파드가 권한을 갖게 되므로, EKS OIDC provider를 신뢰하는
+  전용 Role을 `kube-system:aws-load-balancer-controller` ServiceAccount에 바인딩.
+  정책 본문은 IRSA 모듈 내장(`attach_load_balancer_controller_policy`)이라 별도 JSON 불필요
+- **Helm**으로 컨트롤러 설치 (레플리카 2), `k8s/ingress.yaml` 적용
+  (`internet-facing`, `target-type: ip` — VPC CNI 덕에 파드 IP 직접 라우팅, NodePort 홉 제거)
+- Ingress 생성 후 ALB 주소 발급 ~10초, 타깃 등록·DNS 전파까지 약 4~5분
+- **인터넷 경유 E2E 성공**: ALB → 파드 → Claude API → RDS 저장(id: 2) → 조회
+
+1주차에 VPC 서브넷에 미리 태그(`kubernetes.io/role/elb`)를 달아둔 것이 여기서 효력을 발휘 —
+컨트롤러가 서브넷을 자동 발견해 ALB를 퍼블릭 서브넷에 배치했다.
+
+> ⚠️ **destroy 순서 주의**: 이 ALB와 보안그룹은 컨트롤러가 만든 것이라 terraform state 밖에 있다.
+> `terraform destroy` 전에 반드시 `kubectl delete ingress summarizer -n app`을 먼저 실행할 것.
+> 안 하면 VPC 삭제가 실패하고 ALB만 남아 과금된다. ALB 주소는 재생성 때마다 바뀐다.
 
 ---
 
 ## 현재 상태
 
-**1주차 완료, 2주차는 외부 노출(ALB)만 남음.**
+**1·2주차 완료.** 앱이 인터넷 URL로 서비스되는 상태까지 도달.
 
 | 구분 | 상태 |
 |---|---|
-| 인프라 | **가동 중** (시간당 약 $0.22 — 작업 종료 시 destroy 필수) |
+| 인프라 | **가동 중** (시간당 약 $0.22 + ALB 약 $0.03 — destroy 전 Ingress 먼저 삭제!) |
 | 계정 | AWS: Paid Plan 크레딧 $138.72 / Anthropic: $5 충전 |
 | 코드 | GitHub 공개 저장소에 백업 (github.com/soc05272/eks-gitops-portfolio) |
-| 앱 배포 | **E2E 검증 완료** — Claude API 요약 생성·RDS 저장·조회까지 실증 |
-| 외부 노출 (ALB Ingress) | 미착수 (2주차 마지막 단계) |
+| 앱 배포 | ✅ 2주차 완료 — **인터넷 → ALB → 파드 → Claude API → RDS** 전 구간 실증 |
 | ArgoCD / 매니페스트 repo | 미착수 (3주차) |
 | 관측성 | 미착수 (4주차) |
 

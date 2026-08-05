@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: summarizer
+  namespace: app
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # target-type: ip — 파드 IP로 직접 라우팅 (VPC CNI라 가능, NodePort 홉 제거)
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: summarizer
+                port:
+                  number: 80
+# 주의: terraform destroy 전에 이 Ingress를 먼저 삭제해야 한다.
+# 컨트롤러가 만든 ALB/보안그룹은 terraform state 밖에 있어서,
+# 남아 있으면 VPC 삭제가 실패하고 ALB만 남아 과금된다. (worklog 운영 메모 참고)
