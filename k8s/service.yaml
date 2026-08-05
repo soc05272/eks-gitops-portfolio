@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: summarizer
+  namespace: app
+spec:
+  type: ClusterIP # 외부 노출은 ALB Ingress가 담당 (target-type: ip)
+  selector:
+    app: summarizer
+  ports:
+    - port: 80
+      targetPort: 8000

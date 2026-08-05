@@ -219,16 +219,57 @@ CloudWatch 로그 그룹까지 포함했다 — 전부 0.
 
 ---
 
+## 2026-08-05 ~ 08-06 — 2주차: 앱 배포 (외부 노출 제외 완료)
+
+6일 만의 재개. `terraform apply`(수동)로 인프라를 재기동하고 3계층 검증(AWS → 쿠버네티스
+→ E2E 네트워크)을 재통과했다. **코드 수정 없이 20분 만에 전체 환경이 동일 품질로 재현** —
+destroy/apply 운영 방식이 실제로 성립함을 두 번째로 실증한 셈이다.
+
+### 빌드 → 푸시 → 배포
+
+- Docker Desktop 설치 (cask 설치가 sudo를 요구해 사용자 직접 실행)
+- 이미지 빌드 시 **`--platform linux/amd64` 명시** — Apple Silicon 기본값(arm64)으로
+  빌드하면 x86_64 노드에서 `exec format error`로 죽는 고전적 함정
+- ECR 푸시 (태그 = git SHA `1fc3d94`. IMMUTABLE이라 latest 대신 고유 태그)
+- `k8s/` 매니페스트 작성 (namespace / deployment / service). 3주차 GitOps 전환 시
+  별도 repo로 이관 예정. 이미지의 계정 ID는 `<AWS-ACCOUNT-ID>` 플레이스홀더로 두고
+  `scripts/deploy.sh`가 치환해 적용한다 — versions.tf 부분 백엔드 구성과 같은 이유
+- Secret은 `scripts/create-secret.sh`로 생성 — DB 비밀번호는 tfvars에서 자동으로 읽고
+  API 키는 화면 비표시 프롬프트로 입력. 비밀값이 repo·셸 히스토리·대화에 남지 않으며,
+  destroy 시 Secret도 사라지므로 재기동 때마다 재사용한다
+
+### 트러블슈팅 2건
+
+1. **`CreateContainerConfigError`** — Dockerfile의 이름 기반 `USER appuser`와 매니페스트의
+   `runAsNonRoot: true` 조합은 kubelet이 검증 불가. `runAsUser: 1000` 명시로 해결.
+   상세 분석은 [troubleshooting.md](troubleshooting.md) 참고
+2. **Claude API 402성 오류** — "credit balance is too low". 이 에러가 오히려 API 키 유효성과
+   파드 → NAT → api.anthropic.com 경로를 증명해줬다(키가 틀렸다면 401). Anthropic Console에서
+   크레딧 $5 충전으로 해결 — **AWS와 별개 계정·별개 결제**라는 점 주의
+
+### E2E 검증 성공
+
+```
+POST /summaries → 파드 → NAT → Claude API(claude-sonnet-5) 요약 생성 → RDS 저장 (id: 1)
+GET  /summaries → RDS 조회로 방금 저장한 요약 반환 ✅
+```
+
+readiness 프로브(`/healthz`) 통과 = 앱 시작 시 RDS 연결·테이블 생성도 성공.
+남은 것은 **ALB Ingress Controller**(IRSA IAM Role + Helm) — 이것까지 되면 2주차 완료.
+
+---
+
 ## 현재 상태
 
-**1주차(인프라 프로비저닝) 완료.**
+**1주차 완료, 2주차는 외부 노출(ALB)만 남음.**
 
 | 구분 | 상태 |
 |---|---|
-| 인프라 | **전량 destroy 완료, 월 과금 $0** (17개 항목 전수 검증) |
-| 계정 | Paid Plan, 크레딧 $119.45 |
-| 코드 | GitHub 공개 저장소에 백업 완료 (github.com/soc05272/eks-gitops-portfolio) |
-| 앱 배포 | 미착수 (2주차) |
+| 인프라 | **가동 중** (시간당 약 $0.22 — 작업 종료 시 destroy 필수) |
+| 계정 | AWS: Paid Plan 크레딧 $138.72 / Anthropic: $5 충전 |
+| 코드 | GitHub 공개 저장소에 백업 (github.com/soc05272/eks-gitops-portfolio) |
+| 앱 배포 | **E2E 검증 완료** — Claude API 요약 생성·RDS 저장·조회까지 실증 |
+| 외부 노출 (ALB Ingress) | 미착수 (2주차 마지막 단계) |
 | ArgoCD / 매니페스트 repo | 미착수 (3주차) |
 | 관측성 | 미착수 (4주차) |
 

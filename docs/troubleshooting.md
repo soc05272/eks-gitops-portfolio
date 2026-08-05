@@ -103,3 +103,58 @@ ARM 타입(`t4g.small`)이 더 저렴하지만 채택하지 않았다. `ami_type
   인프라 코드를 짜기 전에 `free-tier-eligible` 필터로 가용 타입을 먼저 확인하는 게 순서다.
 - 무증상으로 오래 걸리는 작업일수록 "정상인데 느린 것"과 "조용히 실패 중인 것"을 구분할
   판단 기준(경과 시간 임계치, 확인할 API)을 미리 정해두는 게 낫다.
+
+---
+
+## [2026-08-06] 파드 CreateContainerConfigError — runAsNonRoot는 이름 기반 USER를 검증하지 못한다
+
+**증상**
+
+2주차 첫 배포에서 파드 2개가 모두 `CreateContainerConfigError` 상태로 멈췄다.
+이미지 풀은 성공했고(`Successfully pulled image`), Secret도 정상 존재했다.
+
+```
+kubectl get pods -n app
+NAME                        READY   STATUS                       RESTARTS
+summarizer-7d6b5b86-mzjz9   0/1     CreateContainerConfigError   0
+```
+
+**원인 분석**
+
+`kubectl describe pod` / `kubectl get events`로 이벤트를 확인하니 원인이 그대로 적혀 있었다.
+
+```
+Error: container has runAsNonRoot and image has non-numeric user (appuser),
+cannot verify user is non-root
+```
+
+- Dockerfile은 `USER appuser`처럼 **이름**으로 실행 사용자를 지정했다
+- 매니페스트에는 보안 강화를 위해 `securityContext.runAsNonRoot: true`를 넣었다
+- kubelet은 컨테이너 시작 전에 "정말 non-root인가"를 검증하는데, 이미지 메타데이터에는
+  문자열 `appuser`만 있고 **UID가 없어서 root 여부를 판정할 수 없다**. 이름은 컨테이너
+  안의 `/etc/passwd`를 읽어야 UID로 환원되는데, 검증 시점은 컨테이너 시작 전이다
+- 그래서 kubelet은 "확인 불가 = 거부"로 처리하고 컨테이너 생성 자체를 막는다
+
+즉 **이미지도 매니페스트도 각각은 올바른데, 조합이 검증 불가능**한 경우다.
+
+**해결**
+
+파드 securityContext에 UID를 명시했다 (`useradd -m appuser`는 Debian 기반 이미지에서 UID 1000).
+
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000   # 이름 대신 숫자로 명시 → kubelet이 검증 가능
+```
+
+재빌드 없이 `kubectl apply`만으로 해결. 근본 대책은 Dockerfile에서부터 숫자 UID를 쓰는 것
+(`USER 1000` 또는 `useradd -u 1000`) — 다음 이미지 빌드 때 반영 예정.
+
+**배운 점**
+
+- `CreateContainerConfigError`는 이미지 풀 성공 **이후**, 컨테이너 시작 **이전**의 설정
+  검증 단계 실패다. Secret/ConfigMap 누락이 흔한 원인이지만 securityContext 검증 실패도
+  여기에 속한다. 원인은 항상 `kubectl describe pod`의 Events에 명시된다
+- `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로** — Dockerfile의 `USER`가 이름이라면
+  매니페스트의 `runAsUser`로 보완하거나 Dockerfile을 숫자로 바꿔야 한다
+- 보안 설정은 "각자 올바름"이 아니라 "조합이 검증 가능함"까지 확인해야 한다

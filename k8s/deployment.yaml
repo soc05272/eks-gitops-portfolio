@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: summarizer
+  namespace: app
+  labels:
+    app: summarizer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: summarizer
+  template:
+    metadata:
+      labels:
+        app: summarizer
+    spec:
+      containers:
+        - name: app
+          # 태그는 배포 시점의 git SHA. ECR이 IMMUTABLE이므로 latest 대신 고유 태그를 쓴다.
+          # <AWS-ACCOUNT-ID>는 scripts/deploy.sh가 치환한다 (계정 ID를 공개 repo에 두지 않기 위함).
+          image: <AWS-ACCOUNT-ID>.dkr.ecr.ap-northeast-2.amazonaws.com/eks-gitops-app:1fc3d94
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: summarizer-secrets # DATABASE_URL, ANTHROPIC_API_KEY
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          # 앱 시작 시 DB 연결로 테이블을 준비하므로, 준비 완료 판정은 /healthz 응답 기준
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+      securityContext:
+        runAsNonRoot: true # Dockerfile의 appuser 실행을 강제 검증
+        # Dockerfile이 USER를 이름(appuser)으로 지정하면 kubelet이 non-root임을
+        # 검증할 수 없어 CreateContainerConfigError가 난다. UID를 명시해 해결.
+        runAsUser: 1000

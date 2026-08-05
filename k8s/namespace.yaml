@@ -1,0 +1,6 @@
+# 2주차 수동 배포용 매니페스트.
+# 3주차 GitOps 전환 시 별도 repo(eks-gitops-manifests)로 이관 예정.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
