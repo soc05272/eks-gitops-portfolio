@@ -1,0 +1,23 @@
+# ArgoCD Application — 매니페스트 repo를 감시해 클러스터를 동기화한다.
+# 적용: kubectl apply -f argocd/application.yaml (클러스터 부트스트랩 시 1회)
+# 전제: argocd 네임스페이스에 매니페스트 repo 접근용 credential secret이 있어야 한다 (운영 메모 참고)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: summarizer
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/soc05272/eks-gitops-manifests.git
+    targetRevision: main
+    path: . # repo 루트의 kustomization.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true    # 매니페스트에서 지운 리소스는 클러스터에서도 제거
+      selfHeal: true # 클러스터를 수동으로 고치면 Git 상태로 되돌림 (drift 감지의 핵심)
+    syncOptions:
+      - CreateNamespace=false # namespace.yaml이 리소스로 포함되어 있음

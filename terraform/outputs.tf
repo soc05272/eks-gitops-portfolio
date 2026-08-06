@@ -23,3 +23,8 @@ output "alb_controller_role_arn" {
 output "vpc_id" {
   value = module.vpc.vpc_id
 }
+
+output "gha_role_arn" {
+  description = "GitHub Actions 워크플로가 assume할 Role (repo secret AWS_GHA_ROLE_ARN에 등록)"
+  value       = module.github_oidc_role.arn
+}

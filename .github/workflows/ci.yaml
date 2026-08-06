@@ -24,7 +24,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN }} # TODO: OIDC용 IAM Role 생성 후 등록
+          role-to-assume: ${{ secrets.AWS_GHA_ROLE_ARN }} # terraform output gha_role_arn
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
@@ -42,13 +42,14 @@ jobs:
       # GitOps: 매니페스트 repo의 이미지 태그를 새 SHA로 교체 → ArgoCD가 감지해 배포
       - name: Update manifest repo
         env:
-          GH_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }} # TODO: fine-grained PAT 등록
+          GH_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }} # fine-grained PAT (eks-gitops-manifests, Contents RW)
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          git clone https://x-access-token:${GH_TOKEN}@github.com/<YOUR-ID>/eks-gitops-manifests.git
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/soc05272/eks-gitops-manifests.git"
           cd eks-gitops-manifests
-          # TODO: kustomize edit set image 또는 yq로 태그 교체
-          # kustomize edit set image app=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git commit -am "chore: update image tag to $IMAGE_TAG" && git push
+          kustomize edit set image "app=${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: update image tag to ${IMAGE_TAG:0:7}"
+          git push
