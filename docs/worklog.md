@@ -330,21 +330,46 @@ Paid Plan 전환으로 지출 상한이 없어졌으므로 도입 우선순위�
 
 ## 운영 메모
 
+### 재기동 루틴 (2026-08-06 실전 검증 — 순서대로)
+
+destroy는 클러스터 안(Secret·컨트롤러)과 ECR 이미지까지 지운다. 아래 ②~⑥이 전부 필요하다.
+
 ```bash
 # 최초 1회 (또는 새로 clone한 경우)
 cp terraform/backend.hcl.example terraform/backend.hcl   # 실제 버킷명 기입
 cd terraform && terraform init -backend-config=backend.hcl
 
-# 재개
-cd terraform && terraform plan -out=tfplan && terraform apply tfplan   # 15~20분
+# ① 인프라 (15~20분)
+cd terraform && terraform plan -out=tfplan && terraform apply tfplan
 
-# kubectl 연결
+# ② kubectl 주소록 갱신 — EKS API 주소는 재생성마다 바뀐다. 빼먹으면 "no such host"
 aws eks update-kubeconfig --region ap-northeast-2 --name eks-gitops-cluster
 
-# 종료 (작업 후 반드시)
+# ③ 이미지 재푸시 — ECR도 destroy로 비워진다(force_delete). 로컬 캐시가 있으면 푸시만
+REG=$(cd terraform && terraform output -raw ecr_repository_url | cut -d/ -f1)
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin $REG
+docker push $REG/eks-gitops-app:<태그>
+
+# ④ 매니페스트 + ⑤ Secret
+./scripts/deploy.sh
+./scripts/create-secret.sh
+
+# ⑥ ALB 컨트롤러 재설치 (클러스터와 함께 사라짐)
+VPC=$(cd terraform && terraform output -raw vpc_id)
+ROLE=$(cd terraform && terraform output -raw alb_controller_role_arn)
+helm repo add eks https://aws.github.io/eks-charts 2>/dev/null
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system \
+  --set clusterName=eks-gitops-cluster --set region=ap-northeast-2 --set vpcId=$VPC \
+  --set serviceAccount.create=true --set serviceAccount.name=aws-load-balancer-controller \
+  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$ROLE"
+# ALB 주소는 매번 바뀐다: kubectl get ingress summarizer -n app
+
+# 종료 (작업 후 반드시 — 순서 주의)
+kubectl delete ingress summarizer -n app   # ALB 먼저 (1~2분 대기)
 terraform destroy
 ```
 
-destroy 전에 `kubectl delete ingress --all` / `kubectl delete pvc --all`을 먼저 실행할 것.
-ALB Ingress Controller가 만든 ALB와 Prometheus의 EBS PV는 terraform state 밖에 있어서
-남아 있으면 VPC 삭제를 막고, NAT와 EKS만 지워진 채 ALB만 남아 과금되는 상황이 생긴다.
+destroy 전에 Ingress(4주차부터는 PVC도)를 먼저 삭제할 것. 컨트롤러가 만든 ALB와
+Prometheus의 EBS PV는 terraform state 밖에 있어서 남아 있으면 VPC 삭제를 막고,
+NAT와 EKS만 지워진 채 ALB만 남아 과금되는 상황이 생긴다.
+RDS 데이터도 destroy마다 초기화된다(skip_final_snapshot) — 시연 데이터는 재기동 후 재생성.
