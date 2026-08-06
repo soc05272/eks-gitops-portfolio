@@ -9,18 +9,36 @@ module "github_oidc_provider" {
   version = "~> 5.0"
 }
 
-module "github_oidc_role" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-github-oidc-role"
-  version = "~> 5.0"
-
+# Role은 모듈 대신 직접 정의한다. 이유(트러블슈팅 기록 참고):
+# 1) GitHub의 새 sub 형식은 계정/저장소 "ID"를 포함한다 — repo:USER@계정ID/REPO@저장소ID:ref:...
+#    모듈이 만드는 구형식 조건(repo:USER/REPO:ref:...)은 영원히 매치되지 않는다.
+# 2) ID를 조건에 고정하면 계정명·repo명이 바뀌거나 탈취-재생성돼도 매치되지 않으므로 더 안전하다.
+resource "aws_iam_role" "gha_ecr" {
   name = "${var.project}-gha-ecr"
 
-  # 이 repo의 main 브랜치에서 실행된 워크플로만 이 Role을 쓸 수 있다
-  subjects = ["soc05272/eks-gitops-portfolio:ref:refs/heads/main"]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "GithubOidcAuth"
+      Effect = "Allow"
+      Principal = {
+        Federated = module.github_oidc_provider.arn
+      }
+      Action = ["sts:AssumeRoleWithWebIdentity"]
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          # 이 repo(ID 고정)의 main 브랜치에서 실행된 워크플로만 허용
+          "token.actions.githubusercontent.com:sub" = "repo:soc05272@107605885/eks-gitops-portfolio@1316360933:ref:refs/heads/main"
+        }
+      }
+    }]
+  })
+}
 
-  policies = {
-    ecr_push = aws_iam_policy.gha_ecr_push.arn
-  }
+resource "aws_iam_role_policy_attachment" "gha_ecr" {
+  role       = aws_iam_role.gha_ecr.name
+  policy_arn = aws_iam_policy.gha_ecr_push.arn
 }
 
 resource "aws_iam_policy" "gha_ecr_push" {

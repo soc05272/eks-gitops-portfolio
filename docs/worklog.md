@@ -276,17 +276,47 @@ readiness 프로브(`/healthz`) 통과 = 앱 시작 시 RDS 연결·테이블 �
 
 ---
 
+## 2026-08-06 (밤) — 3주차: GitOps 파이프라인 구축 (E2E 검증은 다음 세션)
+
+### 구축 완료
+
+- **매니페스트 repo** `eks-gitops-manifests` 생성 (**private** — 계정 ID가 매니페스트에
+  포함되므로. ArgoCD가 그대로 적용하는 구조라 플레이스홀더 치환을 끼울 수 없다).
+  Kustomize 구조: deployment는 논리 이름 `image: app`, kustomization의 `images` 필드가
+  실제 ECR URL·태그로 치환. CI는 `newTag`만 갱신한다
+- **ArgoCD** Helm 설치 (dex·notifications 비활성 — 노드 리소스 절약),
+  Application 적용 → 4개 리소스 **Synced/Healthy**, 기존 리소스 무중단 인수
+- **GHA OIDC** provider + ECR 푸시 전용 Role (main 브랜치 한정)
+- **ci.yaml TODO 4건 완성**, repo secrets(`AWS_GHA_ROLE_ARN`, `MANIFEST_REPO_TOKEN`) 등록
+
+### 트러블슈팅 2건
+
+1. **PAT 개행 혼입** — `echo`로 저장한 토큰 파일의 개행이 ArgoCD credential에 섞여
+   `Invalid username or token`. 93자로 정리해 재등록 → 즉시 Synced.
+   (CI용 GitHub secret도 같은 문제가 잠복해 있어 함께 재등록 — E2E 전에 선제 제거)
+2. **GHA OIDC 인증 실패** — GitHub의 새 sub 형식(`@계정ID`/`@저장소ID` 포함)과
+   Terraform 모듈의 구형식 조건 불일치. CloudTrail `userIdentity`로 실제 sub를 확인해
+   해결. **이 프로젝트에서 가장 값진 디버깅 사례** — [troubleshooting.md](troubleshooting.md) 참고
+
+### 다음 세션 시작점
+
+수정된 신뢰 정책은 코드에만 반영된 상태(세션 종료로 destroy). **재기동 후 첫 작업**:
+`app/**` 아무거나 수정 push → Actions 성공 → 매니페스트 repo 자동 커밋 → ArgoCD 동기화
+→ `/healthz`의 `version: 0.2.0` 확인. 이게 되면 3주차 완료.
+
+---
+
 ## 현재 상태
 
-**1·2주차 완료.** 앱이 인터넷 URL로 서비스되는 상태까지 도달.
+**1·2주차 완료, 3주차 구축 완료(E2E 검증만 잔여).**
 
 | 구분 | 상태 |
 |---|---|
-| 인프라 | **가동 중** (시간당 약 $0.22 + ALB 약 $0.03 — destroy 전 Ingress 먼저 삭제!) |
-| 계정 | AWS: Paid Plan 크레딧 $138.72 / Anthropic: $5 충전 |
-| 코드 | GitHub 공개 저장소에 백업 (github.com/soc05272/eks-gitops-portfolio) |
-| 앱 배포 | ✅ 2주차 완료 — **인터넷 → ALB → 파드 → Claude API → RDS** 전 구간 실증 |
-| ArgoCD / 매니페스트 repo | 미착수 (3주차) |
+| 인프라 | destroy 완료 (세션 종료 시점) |
+| 계정 | AWS: Paid Plan / Anthropic: $5 충전 |
+| 코드 | 앱 repo(공개) + 매니페스트 repo(비공개) 모두 GitHub 백업 |
+| 앱 배포 (2주차) | ✅ 인터넷 → ALB → 파드 → Claude API → RDS 전 구간 실증 |
+| GitOps (3주차) | 🔶 구축 완료 (ArgoCD Synced, CI 완성) — **push→배포 E2E만 다음 세션에서** |
 | 관측성 | 미착수 (4주차) |
 
 ## 알려진 이슈 / 다음에 처리할 것
@@ -364,9 +394,22 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n ku
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$ROLE"
 # ALB 주소는 매번 바뀐다: kubectl get ingress summarizer -n app
 
-# 종료 (작업 후 반드시 — 순서 주의)
-kubectl delete ingress summarizer -n app   # ALB 먼저 (1~2분 대기)
-terraform destroy
+# ⑦ ArgoCD 재설치 (3주차부터 — 클러스터와 함께 사라짐)
+helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null
+helm install argocd argo/argo-cd -n argocd --create-namespace \
+  --set dex.enabled=false --set notifications.enabled=false
+# repo credential: PAT는 평문 보관하지 않으므로 GitHub에서 Regenerate 후 등록
+#   kubectl create secret generic repo-eks-gitops-manifests -n argocd \
+#     --from-literal=type=git --from-literal=url=https://github.com/soc05272/eks-gitops-manifests.git \
+#     --from-literal=username=x-access-token --from-literal=password=<PAT(개행 없이!)>
+#   kubectl label secret repo-eks-gitops-manifests -n argocd argocd.argoproj.io/secret-type=repository
+#   (gh secret set MANIFEST_REPO_TOKEN 도 새 값으로 갱신)
+kubectl apply -f argocd/application.yaml
+
+# 종료 (작업 후 반드시 — 순서 주의. 3주차부터 3단계)
+kubectl delete application summarizer -n argocd  # ① selfHeal이 Ingress를 되살리므로 먼저
+kubectl delete ingress summarizer -n app         # ② ALB 제거 (1~2분 대기)
+terraform destroy                                # ③
 ```
 
 destroy 전에 Ingress(4주차부터는 PVC도)를 먼저 삭제할 것. 컨트롤러가 만든 ALB와

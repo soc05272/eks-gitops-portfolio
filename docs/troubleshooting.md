@@ -166,3 +166,68 @@ securityContext:
 - `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로** — Dockerfile의 `USER`가 이름이라면
   매니페스트의 `runAsUser`로 보완하거나 Dockerfile을 숫자로 바꿔야 한다
 - 보안 설정은 "각자 올바름"이 아니라 "조합이 검증 가능함"까지 확인해야 한다
+
+---
+
+## [2026-08-06] GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID
+
+**증상**
+
+3주차 CI 첫 실행이 AWS 인증 단계에서 실패했다. 에러는 원인을 전혀 알려주지 않는 한 줄뿐.
+
+```
+Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+Role·신뢰 정책·OIDC provider(aud=sts.amazonaws.com)를 모두 확인했지만 문법상 이상이 없었고,
+정책의 sub 조건과 워크플로의 기대 sub도 문자열이 일치해 보였다.
+
+**원인 분석**
+
+가설을 두 번 세우고 두 번 기각했다.
+
+1. **IAM 전파 지연?** → 19분 후 재실행도 실패. 기각
+2. **`ForAllValues:StringEquals` 연산자?** (단일 값 키에 set 연산자를 쓰면 AWS가 거짓으로
+   평가하도록 강화된 이력이 있다) → 표준 패턴(StringEquals)으로 교체하고 전파 시간까지
+   충분히 준 뒤 재실행해도 실패. 기각
+
+결정적 단서는 **CloudTrail**이었다. 실패한 `AssumeRoleWithWebIdentity` 이벤트는
+`requestParameters`를 가리지만, **`userIdentity.userName`에 GitHub가 실제 제시한 sub가
+그대로 남는다**:
+
+```
+실제 sub:  repo:soc05272@107605885/eks-gitops-portfolio@1316360933:ref:refs/heads/main
+정책 조건: repo:soc05272/eks-gitops-portfolio:ref:refs/heads/main   ← 영원히 불일치
+```
+
+GitHub가 sub 클레임에 **계정 ID(@107605885)와 저장소 ID(@1316360933)를 덧붙이는 새 형식**을
+쓰고 있었다. 계정명/저장소명 변경·탈취 후 재생성(rename attack)에 대비한 변경인데,
+Terraform 모듈(iam-github-oidc-role)이 생성하는 조건은 구형식이라 매치될 수 없었다.
+
+**해결**
+
+Role을 모듈 대신 직접 정의하고, sub 조건에 **ID까지 고정**했다. GitHub API로 ID를 교차
+검증(`gh api users/<user> --jq .id`, `gh api repos/<o>/<r> --jq .id`)해 CloudTrail 값과
+일치함을 확인.
+
+```hcl
+Condition = {
+  StringEquals = {
+    "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+    "token.actions.githubusercontent.com:sub" = "repo:soc05272@107605885/eks-gitops-portfolio@1316360933:ref:refs/heads/main"
+  }
+}
+```
+
+부수 효과로 보안이 오히려 강해졌다 — 계정명이 바뀌거나 동명 계정이 재생성돼도 ID가 다르면
+매치되지 않는다.
+
+**배운 점**
+
+- **OIDC "Not authorized" 디버깅은 CloudTrail `userIdentity`부터** — 실패 이벤트에서
+  requestParameters는 가려져도 상대가 제시한 sub/aud는 principalId·userName에 남는다.
+  추측으로 정책을 고치는 것보다 실제 제시값을 보는 게 압도적으로 빠르다
+- 신뢰 정책의 문자열은 "내가 기대하는 값"이 아니라 **"상대가 실제로 보내는 값"**과
+  일치해야 한다. 형식이 문서와 다를 수 있다는 것까지 의심할 것
+- 커뮤니티 모듈은 외부 서비스의 형식 변화에 뒤처질 수 있다. 인증 경계처럼 민감한 부분은
+  모듈이 생성한 정책을 그대로 믿지 말고 산출물을 직접 확인하는 게 낫다

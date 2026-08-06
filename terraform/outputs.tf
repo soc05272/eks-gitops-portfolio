@@ -26,5 +26,5 @@ output "vpc_id" {
 
 output "gha_role_arn" {
   description = "GitHub Actions 워크플로가 assume할 Role (repo secret AWS_GHA_ROLE_ARN에 등록)"
-  value       = module.github_oidc_role.arn
+  value       = aws_iam_role.gha_ecr.arn
 }
