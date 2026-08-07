@@ -365,33 +365,19 @@ git push (version 0.2.0 커밋)
 
 | 구분 | 상태 |
 |---|---|
-| 인프라 | **가동 중** (시간당 약 $0.25 — 종료 시 3단계 순서 준수) |
+| 인프라 | **가동 중** (시간당 약 $0.26 — 종료 시 **4단계** 순서 준수, PVC 선삭제 포함) |
 | 계정 | AWS: Paid Plan / Anthropic: $5 충전 |
 | 코드 | 앱 repo(공개) + 매니페스트 repo(비공개) 모두 GitHub 백업 |
 | 앱 배포 (2주차) | ✅ 인터넷 → ALB → 파드 → Claude API → RDS 전 구간 실증 |
-| GitOps (3주차) | ✅ **push → CI → ArgoCD 자동 배포 E2E 실증** |
-| 관측성 | 미착수 (4주차 — EBS CSI 드라이버 선행 필요) |
+| GitOps (3주차) | ✅ push → CI → ArgoCD 자동 배포 E2E 실증 |
+| 관측성 (4주차) | ✅ **알람 2종 Slack 실증** (파드 재시작 실전 발화 + RDS CPU 유입 확인) |
+| 5주차 | 문서는 누적 완료(트러블슈팅 4건·ADR 3건·worklog) — 발표자료·README 다듬기 잔여 |
 
 ## 알려진 이슈 / 다음에 처리할 것
 
-**① EBS CSI 드라이버 없음 — 4주차 전 필수**
-
-현재 `gp2` StorageClass는 in-tree 프로비저너(`kubernetes.io/aws-ebs`)를 쓰는데 최신 쿠버네티스에서 제거된 방식이고, 실제 볼륨을 만드는 EBS CSI 드라이버가 설치돼 있지 않다(`aws eks list-addons` → `[]`). **PVC를 만들어도 볼륨이 프로비저닝되지 않을 가능성이 높다.**
-
-4주차 `kube-prometheus-stack`이 PV를 요구하므로 그 전에 `eks.tf`에 애드온을 추가해야 한다. IRSA용 IAM Role도 함께 필요하다. 설치 가능 버전은 `v1.63.0-eksbuild.1` 확인됨.
-
-**② CI 워크플로 미완성 — 3주차**
-
-`.github/workflows/ci.yaml`에 TODO 4건이 남아 있다.
-
-- GitHub Actions용 OIDC provider와 IAM Role 미생성 (`AWS_GHA_ROLE_ARN` 비어 있음) — 클러스터의 IRSA용 OIDC와는 별개다
-- 매니페스트 repo용 PAT 미등록
-- clone URL이 `<YOUR-ID>` 플레이스홀더
-- 이미지 태그 교체 로직(`kustomize edit set image`)이 주석 처리됨
-
-**③ 매니페스트 repo 미생성 — 3주차**
-
-`eks-gitops-manifests` repo 자체가 없어서 ArgoCD가 바라볼 대상이 없다.
+> ~~① EBS CSI 드라이버 없음~~ → **해결 (08-07, 4주차)** — `terraform/ebs-csi.tf` + gp3 SC, PVC 10초 Bound 검증
+> ~~② CI 워크플로 미완성~~ → **해결 (08-06~07, 3주차)** — TODO 4건 전부 해소, OIDC sub 신형식 이슈까지 해결
+> ~~③ 매니페스트 repo 미생성~~ → **해결 (08-06, 3주차)** — private repo + Kustomize, ArgoCD 연동 완료
 
 **④ 예산 알람 미적용**
 
