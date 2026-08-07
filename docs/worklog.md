@@ -458,8 +458,12 @@ helm install cloudwatch-exporter prometheus-community/prometheus-cloudwatch-expo
 # 종료 (작업 후 반드시 — 순서 주의. 4주차부터 4단계)
 kubectl delete application summarizer -n argocd  # ① selfHeal이 Ingress를 되살리므로 먼저
 kubectl delete ingress summarizer -n app         # ② ALB 제거 (1~2분 대기)
-kubectl delete pvc --all -n monitoring           # ③ Prometheus EBS 볼륨 — 안 지우면 클러스터
-                                                 #    삭제 후 볼륨만 고아로 남아 계속 과금된다!
+helm uninstall monitoring cloudwatch-exporter -n monitoring  # ③-1 스택을 먼저 내려야
+kubectl delete pvc --all -n monitoring                       # ③-2 PVC가 삭제된다 (사용 중이면
+                                                 #    멈춤). 안 지우면 클러스터 삭제 후 EBS만
+                                                 #    고아로 남아 계속 과금! CSI 볼륨 0 확인:
+                                                 #    aws ec2 describe-volumes --filters \
+                                                 #      Name=tag-key,Values=kubernetes.io/created-for/pvc/name
 terraform destroy                                # ④
 ```
 
