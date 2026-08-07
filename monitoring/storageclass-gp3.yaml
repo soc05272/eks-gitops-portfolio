@@ -1,0 +1,13 @@
+# EBS CSI 드라이버용 gp3 StorageClass.
+# 기존 gp2 SC는 제거된 in-tree 프로비저너를 가리키는 유령이라 사용하지 않는다.
+# default 지정 대신 소비자(Prometheus 등)가 storageClassName: gp3 로 명시하는 방식.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+volumeBindingMode: WaitForFirstConsumer # 파드가 뜰 AZ를 보고 그 AZ에 볼륨 생성
+reclaimPolicy: Delete # PVC 삭제 시 볼륨도 삭제 — destroy 운영 방식과 일치
+allowVolumeExpansion: true

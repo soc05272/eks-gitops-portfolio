@@ -61,7 +61,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 - [x] **1주차 — 인프라 프로비저닝**: Terraform으로 VPC + EKS + RDS + ECR 구축, S3 원격 state
 - [x] **2주차 — 앱 배포**: 컨테이너화, kubectl 수동 배포, ALB Ingress Controller 연결
 - [x] **3주차 — CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
-- [ ] **4주차 — 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
+- [x] **4주차 — 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
 - [ ] **5주차 — 문서화**: 트러블슈팅 정리, ADR 보완, 발표자료(PPT)
 
 ## 5. 비용 전략

@@ -327,9 +327,41 @@ git push (version 0.2.0 커밋)
 
 ---
 
+## 2026-08-07 (오후) — 4주차 완료: 관측성
+
+### 스토리지 계층 (선행 조건)
+
+- **EBS CSI 드라이버** — IRSA + EKS 관리형 애드온 (`terraform/ebs-csi.tf`).
+  in-tree 프로비저너가 제거된 최신 쿠버네티스에서 PVC를 실제 EBS로 만들어주는 계층
+- **gp3 StorageClass** — 유령이 된 gp2 SC는 방치하고 명시적 지정 방식으로 신설
+- 검증: 테스트 PVC → **10초 만에 Bound**, AWS에 실제 gp3 볼륨 in-use 확인 후 정리
+
+### kube-prometheus-stack
+
+- t3.medium x2에 맞춘 보수적 리소스 + Prometheus는 gp3 5Gi PV (retention 2d)
+- EKS에서 수집 불가한 컨트롤플레인 컴포넌트(etcd 등)를 미리 꺼서 **가짜 DOWN 0건 — 19/19 up**
+- PromQL로 우리 앱 조회 확인 (`summarizer 가용 레플리카: 2`), Grafana healthy
+
+### Slack 알람 — README 계획 2종 완성
+
+- Webhook은 gitignore된 `monitoring/values-secret.yaml`로 분리 (backend.hcl 패턴)
+- **알람 ① AppPodRestarting** — 실전 검증: 파드 kill → FIRING → **Slack 수신 확인** (스크린샷 확보).
+  `send_resolved`로 복구 통보까지. "수동 장애 대응 → 선제 감지"의 실증
+- **알람 ② RDSHighCPU** — RDS 지표는 CloudWatch에만 있어 **cloudwatch-exporter**(+네 번째 IRSA)로
+  Prometheus에 유입시켜 알람 경로를 단일화. 규칙 로드·지표 유입(CPU 3.8%) 확인
+
+### 트러블슈팅 (요약)
+
+- **CloudWatch 타임스탬프 함정** — exporter가 CW의 지연된 원본 타임스탬프를 붙이면
+  Prometheus 인스턴트 쿼리(5분 룩백)에 안 잡힌다. `set_timestamp: false`로 스크레이프
+  시각을 쓰게 해서 해결. exporter `/metrics`를 직접 curl해 값 끝의 타임스탬프를 보고 진단
+- 대기 루프의 port-forward가 도중에 죽으면 영원히 기다리게 된다 — 진단 전에 포워드 생존부터 확인
+
+---
+
 ## 현재 상태
 
-**1·2·3주차 완료.** push→배포 전자동 파이프라인 가동.
+**1·2·3·4주차 완료.** 남은 것은 5주차(문서 정리·발표자료)와 앱 개선 백로그.
 
 | 구분 | 상태 |
 |---|---|
@@ -427,10 +459,22 @@ helm install argocd argo/argo-cd -n argocd --create-namespace \
 #   (gh secret set MANIFEST_REPO_TOKEN 도 새 값으로 갱신)
 kubectl apply -f argocd/application.yaml
 
-# 종료 (작업 후 반드시 — 순서 주의. 3주차부터 3단계)
+# ⑧ 모니터링 재설치 (4주차부터)
+kubectl apply -f monitoring/storageclass-gp3.yaml
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null
+helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring --create-namespace \
+  -f monitoring/values.yaml -f monitoring/values-secret.yaml   # values-secret은 로컬 보관 (Slack Webhook)
+kubectl apply -f monitoring/alert-rules.yaml
+helm install cloudwatch-exporter prometheus-community/prometheus-cloudwatch-exporter \
+  -n monitoring -f monitoring/values-cloudwatch.yaml \
+  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(cd terraform && terraform output -raw cloudwatch_exporter_role_arn)"
+
+# 종료 (작업 후 반드시 — 순서 주의. 4주차부터 4단계)
 kubectl delete application summarizer -n argocd  # ① selfHeal이 Ingress를 되살리므로 먼저
 kubectl delete ingress summarizer -n app         # ② ALB 제거 (1~2분 대기)
-terraform destroy                                # ③
+kubectl delete pvc --all -n monitoring           # ③ Prometheus EBS 볼륨 — 안 지우면 클러스터
+                                                 #    삭제 후 볼륨만 고아로 남아 계속 과금된다!
+terraform destroy                                # ④
 ```
 
 destroy 전에 Ingress(4주차부터는 PVC도)를 먼저 삭제할 것. 컨트롤러가 만든 ALB와

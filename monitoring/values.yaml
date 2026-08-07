@@ -1,0 +1,53 @@
+# kube-prometheus-stack 설정 — t3.medium x2 (노드당 allocatable ~1.9 CPU / 3.2Gi)에
+# 맞춰 리소스를 보수적으로 잡는다. destroy/apply 반복 운영이므로 보존 기간도 짧게.
+
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    # PV가 없으면 파드 재시작마다 메트릭이 증발한다 — EBS CSI를 선행 설치한 이유
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+    resources:
+      requests: {cpu: 200m, memory: 512Mi}
+      limits: {memory: 1Gi}
+
+grafana:
+  # 대시보드는 차트가 프로비저닝하므로 무상태로 운영 (직접 만든 대시보드는
+  # 파드 재시작 시 사라진다 — 필요해지면 persistence 활성화)
+  persistence:
+    enabled: false
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {memory: 128Mi}
+
+kube-state-metrics:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {memory: 128Mi}
+
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {memory: 64Mi}
+
+# EKS에서는 컨트롤플레인 내부 컴포넌트에 접근 불가 — 긁어봤자 실패 알람만 나므로 끔
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false # EKS의 kube-proxy 메트릭 바인딩이 localhost라 수집 불가

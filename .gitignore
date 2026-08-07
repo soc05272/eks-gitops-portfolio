@@ -28,3 +28,7 @@ __pycache__/
 # OS/IDE
 .DS_Store
 .vscode/
+
+# 모니터링 — Slack Webhook 등 비밀값 포함 파일
+monitoring/values-secret.yaml
+.slack_webhook

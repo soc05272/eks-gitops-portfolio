@@ -1,0 +1,32 @@
+# 커스텀 알람 규칙 — kube-prometheus-stack의 Prometheus가 자동 수집한다.
+# label `release: monitoring`이 있어야 오퍼레이터의 ruleSelector에 걸린다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: app-custom-alerts
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    - name: app.rules
+      rules:
+        # README 계획 알람 ①: 파드 재시작 감지
+        - alert: AppPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="app"}[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "app 파드 재시작 감지: {{ $labels.pod }} — 최근 10분 내 {{ $value | printf \"%.0f\" }}회"
+            description: "CrashLoop 초기 신호일 수 있음. kubectl logs {{ $labels.pod }} -n app --previous 로 직전 로그 확인."
+
+        # README 계획 알람 ②: RDS CPU (cloudwatch-exporter 경유)
+        - alert: RDSHighCPU
+          expr: aws_rds_cpuutilization_average{dbinstance_identifier="eks-gitops-postgres"} > 80
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RDS CPU 과부하: {{ $labels.dbinstance_identifier }} — {{ $value | printf \"%.0f\" }}%가 5분 지속"
+            description: "db.t3.micro는 버스트형이라 지속 고부하 시 CPU 크레딧 고갈로 급격히 느려진다. 슬로우 쿼리와 커넥션 수부터 확인."
