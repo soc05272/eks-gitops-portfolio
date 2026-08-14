@@ -359,19 +359,62 @@ git push (version 0.2.0 커밋)
 
 ---
 
+## 2026-08-14 — 전체 수명주기 리허설 (5주차 발표 전 종합 점검)
+
+지난 destroy의 완료 검증부터 시작해, **재기동 → 전 기능 검증 → 회수**를 하루에 완주했다.
+목적은 "코드와 문서만으로 시스템 전체를 재현·검증·회수할 수 있다"는 이 프로젝트의
+핵심 주장을 발표 전에 한 번에 실증해두는 것.
+
+### 사전 정리
+
+- 지난 세션 잔여물 우려로 destroy 재실행 후 **13개 항목 전수검증 → 잔여물 0** 확인
+- 유지 항목은 의도된 것뿐: S3 state 버킷(무과금 수준), KMS 삭제 대기 키(무과금)
+
+### 재기동 — 8단계 루틴 세 번째 실증
+
+apply(64→78개로 리소스 증가: IRSA 4종·EBS CSI·GHA OIDC 추가분) 후 루틴 ②~⑧ 순서대로 복구.
+특이사항 두 가지:
+
+- **이미지 두 태그 전략**: destroy로 비워진 ECR에 한 번 빌드한 이미지를
+  `1fc3d94`(deploy.sh의 수동 배포용)와 `a53441a...`(매니페스트 repo의 newTag용) 두 태그로
+  푸시 — ArgoCD 인수 시점까지 양쪽 참조가 모두 유효하도록
+- **PAT 클립보드 사고 재발**: 8/6 개행 사고의 대응책이던 pbpaste 방식이 오히려
+  "명령 복사가 토큰을 덮어쓰는" 새 실패 모드를 만들었다. hidden prompt 방식으로 절차
+  자체를 교체, ArgoCD hard refresh로 복구. [troubleshooting.md](troubleshooting.md) 5번째 사례
+
+### 검증 결과 — 전 항목 통과
+
+| 검증 | 결과 |
+|---|---|
+| 앱 E2E | ✅ 인터넷 → ALB → 파드 → Claude API 요약 → RDS 저장(id:1)/조회 |
+| GitOps | ✅ 버전 0.2.1 push → CI(재발급 PAT 첫 실전) → 매니페스트 자동 커밋(c8c04b7) → ArgoCD 무중단 롤링 → 인터넷에서 `version: 0.2.1` 확인 |
+| 알람 | ✅ 컨테이너 kill → `AppPodRestarting` FIRING → **Slack 실수신**(스크린샷). 셋업 중 파드 대기 구간의 기본 알람 FIRING/RESOLVED 사이클도 관찰 — 커스텀·기본 알람 모두 실전 동작 |
+
+소소한 발견: slim 이미지에는 `kill` 실행 파일이 없어 `sh -c 'kill 1'`(셸 내장)로 재시작을
+유발해야 했다. 롤링 직후 ALB 응답 실패 1회도 관측 — 원인 분석과 표준 해법(Pod Readiness
+Gate)은 [troubleshooting.md](troubleshooting.md) 6번째 사례로 기록, 백로그 등록.
+
+### 회수 — 종료 절차 4단계
+
+Application 삭제 → Ingress 삭제(ALB 소멸 확인) → 모니터링/PVC 삭제(**고아 EBS 0 확인**)
+→ `terraform destroy`(78개, 에러 0) → 13개 항목 전수검증 **잔여물 0, 월 과금 $0.**
+
+---
+
 ## 현재 상태
 
-**1·2·3·4주차 완료.** 남은 것은 5주차(문서 정리·발표자료)와 앱 개선 백로그.
+**1·2·3·4주차 완료 + 전체 리허설 통과(8/14).** 남은 것은 5주차(문서 정리·발표자료)와 백로그.
 
 | 구분 | 상태 |
 |---|---|
-| 인프라 | **가동 중** (시간당 약 $0.26 — 종료 시 **4단계** 순서 준수, PVC 선삭제 포함) |
+| 인프라 | **종료** (과금 $0 — S3 state 버킷·KMS 삭제 대기 키만 유지) |
 | 계정 | AWS: Paid Plan / Anthropic: $5 충전 |
 | 코드 | 앱 repo(공개) + 매니페스트 repo(비공개) 모두 GitHub 백업 |
-| 앱 배포 (2주차) | ✅ 인터넷 → ALB → 파드 → Claude API → RDS 전 구간 실증 |
-| GitOps (3주차) | ✅ push → CI → ArgoCD 자동 배포 E2E 실증 |
-| 관측성 (4주차) | ✅ **알람 2종 Slack 실증** (파드 재시작 실전 발화 + RDS CPU 유입 확인) |
-| 5주차 | 문서는 누적 완료(트러블슈팅 4건·ADR 3건·worklog) — 발표자료·README 다듬기 잔여 |
+| 앱 배포 (2주차) | ✅ 인터넷 → ALB → 파드 → Claude API → RDS 전 구간 실증 (8/14 재검증) |
+| GitOps (3주차) | ✅ push → CI → ArgoCD 자동 배포 E2E 실증 (8/14 재검증, v0.2.1) |
+| 관측성 (4주차) | ✅ 알람 Slack 실수신 (8/14 재검증) |
+| **리허설 (8/14)** | ✅ **재기동 → 전 기능 검증 → 회수 전체 수명주기 하루 완주** |
+| 5주차 | 문서 누적 완료(트러블슈팅 6건·ADR 3건·worklog) — 발표자료·README 다듬기 잔여 |
 
 ## 알려진 이슈 / 다음에 처리할 것
 
@@ -383,6 +426,16 @@ git push (version 0.2.0 커밋)
 
 `budgets.tf.disabled` 상태. 도입 시 파일명을 `budgets.tf`로 되돌리면 된다.
 Paid Plan 전환으로 지출 상한이 없어졌으므로 도입 우선순위가 이전보다 높다.
+
+**⑥ 배포 무중단 보강 — Pod Readiness Gate (2026-08-14 등록)**
+
+리허설에서 롤링 직후 ALB 응답 실패 1회 관측. `kubectl label namespace app
+elbv2.k8s.aws/pod-readiness-gate-inject=enabled` 한 줄로 도입 가능 — 상세는
+troubleshooting.md 6번째 사례.
+
+**⑦ Dockerfile 숫자 UID (runAsNonRoot 근본 대책, 2026-08-06 등록)**
+
+현재는 매니페스트의 `runAsUser: 1000`으로 보완 중. 다음 이미지 변경 때 `USER 1000` 반영.
 
 **⑤ 앱 개선 백로그 — 요청사항 접수 예정 (2026-08-06 결정)**
 
