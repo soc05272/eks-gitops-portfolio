@@ -231,3 +231,75 @@ Condition = {
   일치해야 한다. 형식이 문서와 다를 수 있다는 것까지 의심할 것
 - 커뮤니티 모듈은 외부 서비스의 형식 변화에 뒤처질 수 있다. 인증 경계처럼 민감한 부분은
   모듈이 생성한 정책을 그대로 믿지 말고 산출물을 직접 확인하는 게 낫다
+
+---
+
+## [2026-08-14] ArgoCD `Invalid username or token` 재발 — 클립보드 경유 등록의 구조적 함정
+
+**증상**
+
+재기동 리허설에서 PAT를 재발급·등록했는데 ArgoCD Application이 `Unknown` 상태에 머물렀다.
+
+```
+ComparisonError: failed to list refs: authentication required:
+Invalid username or token. Password authentication is not supported for Git operations.
+```
+
+같은 에러를 8/6에 이미 겪었고(그때는 개행 혼입), 그 교훈으로 `pbpaste` 방식까지 도입한
+상태였다. 그런데도 재발했다.
+
+**원인 분석**
+
+등록된 값을 노출 없이 형태만 검사했다 — 길이·앞 몇 글자·줄 수만 보면 토큰이 맞는지
+판정할 수 있다.
+
+```bash
+PW=$(kubectl get secret repo-eks-gitops-manifests -n argocd \
+     -o jsonpath='{.data.password}' | base64 -d)
+echo "길이: ${#PW} / 앞 11자: ${PW:0:11}"
+# 길이: 237 / 앞 11자: kubectl cre   ← 토큰이 아니라 명령어 텍스트
+```
+
+password에 들어간 것은 **등록 명령어 자체**였다. 진행 순서가 이랬다:
+
+1. GitHub에서 PAT 복사 → 클립보드 = 토큰
+2. 안내받은 등록 명령 블록을 **복사** → 클립보드 = 명령어 (토큰 덮어씀)
+3. 명령 실행 → `$(pbpaste)`가 명령어 텍스트를 password로 등록
+
+즉 8/6의 개행 문제를 고친 `pbpaste` 방식이 **새로운 실패 모드**를 만들었다.
+"클립보드에서 읽는다"는 설계는 클립보드가 토큰 복사와 명령 복사에 공유되는 순간
+실행 순서에 의존하게 되고, 이는 사람이 지키기 어려운 암묵적 전제다.
+
+**해결**
+
+클립보드를 데이터 경로에서 아예 제거했다 — hidden prompt로 토큰을 변수에 한 번 받아
+필요한 모든 곳(ArgoCD Secret + CI용 GitHub secret)에 등록하고 즉시 폐기한다.
+
+```bash
+read -s "TOKEN?PAT 붙여넣기: "; echo
+kubectl delete secret repo-eks-gitops-manifests -n argocd
+kubectl create secret generic repo-eks-gitops-manifests -n argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/soc05272/eks-gitops-manifests.git \
+  --from-literal=username=x-access-token --from-literal=password="$TOKEN"
+kubectl label secret repo-eks-gitops-manifests -n argocd \
+  argocd.argoproj.io/secret-type=repository
+printf '%s' "$TOKEN" | gh secret set MANIFEST_REPO_TOKEN --repo soc05272/eks-gitops-portfolio
+unset TOKEN
+```
+
+재등록 후에도 Application은 `Unknown`에 머물렀다 — 이전 비교 실패가 캐시되어 있어서다.
+`kubectl annotate application summarizer -n argocd argocd.argoproj.io/refresh=hard --overwrite`
+로 강제 새로고침하자 수 초 내 `Synced/Healthy`로 전환, 매니페스트 기준 이미지로 롤링 배포까지
+자동 수행됐다.
+
+**배운 점**
+
+- **같은 증상의 두 번째 발생은 "더 조심하기"가 아니라 절차 자체를 바꿔야 한다는 신호다.**
+  1차(개행) 대응이 "복사를 더 잘하기"였다면, 2차 대응은 클립보드라는 공유 자원을
+  데이터 경로에서 제거하는 것이었다
+- 비밀값 등록 실패의 1차 진단은 **값을 노출하지 않고 길이·접두사·줄 수만 확인**하는 것.
+  토큰류는 형식이 정해져 있어(fine-grained PAT: 93자, `github_pat_` 접두사) 이것만으로
+  "무엇이 잘못 들어갔는지"까지 특정된다
+- 자격증명을 고친 뒤 ArgoCD가 계속 `Unknown`이면 **hard refresh**부터 — 이전 실패 상태가
+  캐시되어 재시도가 즉시 반영되지 않을 수 있다
