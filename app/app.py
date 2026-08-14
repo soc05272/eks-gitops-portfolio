@@ -43,7 +43,7 @@ class SummarizeRequest(BaseModel):
     text: str = Field(min_length=10, max_length=20000)
 
 
-APP_VERSION = "0.2.0"  # GitOps 파이프라인 E2E 검증용 — 배포 확인의 기준값
+APP_VERSION = "0.2.1"  # GitOps 파이프라인 E2E 검증용 — 배포 확인의 기준값
 
 
 @app.get("/healthz")
