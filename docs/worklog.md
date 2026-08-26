@@ -435,6 +435,26 @@ max=3 여유가 이미 코드에 있어 작업량이 크지 않고, "HPA로 파�
   경로가 필요 없다 — 다음 apply 때 처음부터 17로 생성 (`SELECT version()`으로 확인 예정)
 - 프로덕션이었다면 Blue/Green 배포 등 별도 경로가 필요 — interview-prep.md에 Q&A로 정리
 
+### 재기동 검증 회차 (같은 날 오후) — HPA·PG17 실증 완료
+
+9단계 루틴(⑨ metrics-server 첫 실행 포함)으로 재기동, **다섯 번째 재현**. 검증 결과:
+
+| 검증 | 결과 |
+|---|---|
+| PostgreSQL 17 | ✅ `SELECT version()` → **17.9** (파드 안에서 SQL로 확정) |
+| 앱 E2E | ✅ ALB → Claude 요약 → PG17 저장/조회 |
+| **HPA 사이클** | ✅ **2 → 6 → 2 완주** — busybox 부하 3기 투입, CPU 최고 306% 감지 후 6개 증설. 부하 제거 후 CPU 2%로 떨어졌지만 **안정화 창 약 6.5분을 기다린 뒤** 2개 복귀 (축소 지연은 설계된 동작) |
+| replicas 충돌 방지 | ✅ 파드 6개 상태에서도 ArgoCD **Synced** — replicas 제거 조치의 실전 검증 |
+| 알람 | ✅ 파드 재시작 → FIRING → **Slack 실수신** (스크린샷 확보) |
+
+**값진 관찰 — HPA의 한계가 실제 화면으로**: 6개째 파드가 `Pending`, 사유는
+`0/2 nodes available: Too many pods` — CPU가 아니라 **노드당 파드 수 상한**(t3.medium의
+ENI 제약, 노드당 17개)이었다. 모니터링 스택과 부하 생성기가 슬롯을 차지한 상태에서 한계 도달.
+"HPA는 파드만 늘린다, 노드 확장은 Cluster Autoscaler의 일"이 백로그 ⑨의 실증 근거가 됐다.
+
+부수 발견: `InfoInhibitor`(스택 내부 관리용 알람)가 Slack까지 발송됨 — null 라우팅으로
+소음을 줄이는 튜닝 거리 (경미, 백로그성 메모).
+
 ---
 
 ## 현재 상태
@@ -473,10 +493,8 @@ troubleshooting.md 6번째 사례.
 
 현재는 매니페스트의 `runAsUser: 1000`으로 보완 중. 다음 이미지 변경 때 `USER 1000` 반영.
 
-**⑧ HPA 실동작 검증 (2026-08-26 매니페스트 반영 완료 — apply 대기)**
-
-hpa.yaml은 매니페스트 repo에 반영됨. 다음 apply 때 metrics-server 설치(루틴 ⑨) 후
-연산형 부하로 2→6→2 사이클 검증 + `kubectl get hpa -w` 캡처(발표자료 시연 재료).
+> ~~⑧ HPA 실동작 검증~~ → **해결 (08-26 오후)** — 2→6→2 사이클 완주, Pending 관찰까지.
+> 위 "재기동 검증 회차" 참고
 
 **⑨ Cluster Autoscaler — 보너스 백로그 (2026-08-26 등록)**
 
