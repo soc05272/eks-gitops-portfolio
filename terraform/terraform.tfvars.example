@@ -1,0 +1,8 @@
+# terraform.tfvars로 복사해서 실제 값 기입 (terraform.tfvars는 gitignore 대상 — 절대 커밋 금지)
+#   cp terraform.tfvars.example terraform.tfvars
+
+# RDS 마스터 비밀번호 — 영숫자 16자 이상 권장
+db_password = "CHANGE-ME"
+
+# 예산 알림 수신 이메일 (budgets.tf 활성화 시 사용 — 비활성 상태에서도 값은 필요)
+budget_alert_email = "you@example.com"

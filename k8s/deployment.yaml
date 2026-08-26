@@ -6,7 +6,7 @@ metadata:
   labels:
     app: summarizer
 spec:
-  replicas: 2
+  replicas: 2 # 부트스트랩(HPA 설치 전)용 — ArgoCD 인수 후에는 매니페스트 repo의 HPA가 replicas를 관리한다
   selector:
     matchLabels:
       app: summarizer

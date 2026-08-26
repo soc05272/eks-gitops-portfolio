@@ -30,7 +30,7 @@ git push ─▶ GitHub Actions ──(OIDC — 액세스 키 없는 인증)─�
 ┌─ VPC 10.0.0.0/16 (2 AZ) ─────────────────────────┼──────────────────────────┐
 │  Public Subnet   : ALB(internet-facing) · NAT ×1 ▼                          │
 │  Private Subnet  : EKS 1.31 노드그룹 (t3.medium ×2, Spot)                   │
-│                    ├─ App Pods ×2 — FastAPI, 요청 시 Claude API 호출(NAT)   │
+│                    ├─ App Pods 2~6 (HPA) — FastAPI, Claude API 호출(NAT)    │
 │                    ├─ ALB Controller · ArgoCD · EBS CSI  ← IRSA로 권한 분리 │
 │                    └─ Prometheus · Grafana · Alertmanager ──▶ Slack 알람    │
 │  DB Subnet       : RDS PostgreSQL 17 (db.t3.micro, Single-AZ)               │
