@@ -427,6 +427,14 @@ max=3 여유가 이미 코드에 있어 작업량이 크지 않고, "HPA로 파�
 
 **검증은 다음 apply 때**: `kubectl get hpa -w`로 2→6→2 사이클 확인 + 캡처(발표자료 시연 재료).
 
+### PostgreSQL 16 → 17 변경 (같은 날)
+
+- 이유: **현업에서 운영 중인 솔루션의 DB가 PostgreSQL 17** — 운영 경험과 동일 버전으로 맞춰
+  경력 연속성 확보. 서울 리전 17.5~17.11 지원과 db.t3.micro 조합 가능 여부를 CLI로 확인 후 결정
+- 변경: `rds.tf`의 `engine_version = "17"` 한 줄. destroy/apply 재생성 구조라 업그레이드
+  경로가 필요 없다 — 다음 apply 때 처음부터 17로 생성 (`SELECT version()`으로 확인 예정)
+- 프로덕션이었다면 Blue/Green 배포 등 별도 경로가 필요 — interview-prep.md에 Q&A로 정리
+
 ---
 
 ## 현재 상태

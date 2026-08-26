@@ -11,7 +11,7 @@
 |---|---|---|
 | **VPC** | 10.0.0.0/16, 2AZ, Public/Private/DB 3계층 서브넷 | 상태(stateful)·무상태(stateless) 워크로드를 네트워크 수준에서 분리. ALB 자동 탐색용 서브넷 태그(`kubernetes.io/role/elb`)를 코드로 명시 |
 | **EKS** | 쿠버네티스 1.31 관리형 컨트롤플레인 + 관리형 노드그룹(t3.medium Spot ×2) | 컨트롤플레인 운영을 AWS에 위임. Spot 노드로 비용 70%↓ — 파드가 stateless라서 가능한 선택 |
-| **RDS** | PostgreSQL 16, db.t3.micro, Single-AZ | 백업·패치·장애조치를 관리형에 위임. 보안그룹은 CIDR이 아닌 **노드 SG 참조 방식**으로 5432만 허용 |
+| **RDS** | PostgreSQL 17, db.t3.micro, Single-AZ | 백업·패치·장애조치를 관리형에 위임. 보안그룹은 CIDR이 아닌 **노드 SG 참조 방식**으로 5432만 허용. 버전은 현업에서 운영 중인 솔루션 DB와 동일하게 맞춤 |
 | **ECR** | 컨테이너 이미지 저장소 | IMMUTABLE 태그(태그=커밋 SHA, 코드-이미지 1:1), scan on push, 수명주기 정책(최근 10개 유지) |
 | **ALB** | internet-facing 진입점 | 콘솔에서 만들지 않음 — **AWS Load Balancer Controller가 Ingress 선언을 보고 자동 생성**. `target-type: ip`로 파드 IP 직접 라우팅 |
 | **NAT Gateway** | 프라이빗 서브넷의 아웃바운드(ECR pull, Claude API 호출) | 비용 최적화로 단일 AZ 1개 (ADR-003). 파드의 공인 IP가 NAT EIP와 일치함을 E2E로 검증 |

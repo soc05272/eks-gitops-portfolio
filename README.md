@@ -33,7 +33,7 @@ git push ─▶ GitHub Actions ──(OIDC — 액세스 키 없는 인증)─�
 │                    ├─ App Pods ×2 — FastAPI, 요청 시 Claude API 호출(NAT)   │
 │                    ├─ ALB Controller · ArgoCD · EBS CSI  ← IRSA로 권한 분리 │
 │                    └─ Prometheus · Grafana · Alertmanager ──▶ Slack 알람    │
-│  DB Subnet       : RDS PostgreSQL 16 (db.t3.micro, Single-AZ)               │
+│  DB Subnet       : RDS PostgreSQL 17 (db.t3.micro, Single-AZ)               │
 └──────────────────────────────────────────────────────────────────────────────┘
 [사용자 트래픽]  인터넷 ─▶ ALB ─▶ 파드(target-type: ip 직접 라우팅) ─▶ RDS
 [RDS 지표]      CloudWatch ─▶ cloudwatch-exporter ─▶ Prometheus (알람 경로 단일화)

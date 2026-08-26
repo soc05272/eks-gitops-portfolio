@@ -20,7 +20,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_db_instance" "postgres" {
   identifier     = "${var.project}-postgres"
   engine         = "postgres"
-  engine_version = "16"
+  engine_version = "17" # 현재 운영 중인 솔루션의 DB와 동일 버전으로 맞춤 (경력 연속성)
   instance_class = "db.t3.micro"
 
   allocated_storage = 20
