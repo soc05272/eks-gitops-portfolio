@@ -413,6 +413,9 @@ max=3 여유가 이미 코드에 있어 작업량이 크지 않고, "HPA로 파�
 - `hpa.yaml` 신규 — CPU 평균 50% 기준 2~6 레플리카. 분모는 deployment의 `requests.cpu=100m`.
   min 2는 AZ 분산 전제, max 6(=600m)은 노드 2대 여유 내 상한
 - `kustomization.yaml` resources에 등록 — 다음 apply 때 ArgoCD가 자동 배포
+- **deployment의 `replicas: 2` 선언 제거** (`4ff6938`) — HPA가 관리하는 필드를 Git에 두면
+  HPA가 늘릴 때마다 ArgoCD(selfHeal)가 drift로 판단해 되돌린다. GitOps + HPA 조합의
+  표준 해법은 replicas를 Git에서 빼서 소유권을 HPA에 넘기는 것
 
 **전제 조건과 주의점**
 
