@@ -24,7 +24,7 @@ grafana:
     enabled: false
   resources:
     requests: {cpu: 50m, memory: 128Mi}
-    limits: {memory: 256Mi}
+    limits: {memory: 512Mi} # 256Mi는 대시보드 조회 부하에서 OOMKilled (2026-08-26 실측)
 
 alertmanager:
   alertmanagerSpec:
