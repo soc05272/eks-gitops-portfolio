@@ -455,6 +455,12 @@ ENI 제약, 노드당 17개)이었다. 모니터링 스택과 부하 생성기�
 부수 발견: `InfoInhibitor`(스택 내부 관리용 알람)가 Slack까지 발송됨 — null 라우팅으로
 소음을 줄이는 튜닝 거리 (경미, 백로그성 메모).
 
+**실전 장애 1건 — Grafana OOMKilled** (캡처 세션 중): 보수적으로 잡았던 메모리 제한
+256Mi가 HPA 부하 테스트 직후의 대시보드 조회에서 한계 도달 → CrashLoopBackOff.
+`lastState.terminated.reason=OOMKilled`로 진단, 제한 512Mi 상향으로 해결하고
+values.yaml에 실측 근거 주석과 함께 반영(`bf6950c`) — 라이브 수정과 코드를 일치시킴.
+알람 채널에 이 재시작이 실제 이벤트로 찍힌 것도 확인.
+
 ---
 
 ## 현재 상태
