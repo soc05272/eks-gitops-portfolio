@@ -401,6 +401,31 @@ Application 삭제 → Ingress 삭제(ALB 소멸 확인) → 모니터링/PVC �
 
 ---
 
+## 2026-08-26 — HPA 도입 결정 및 매니페스트 반영
+
+백로그였던 오토스케일링을 검토해 **HPA는 도입, Cluster Autoscaler는 보너스 백로그, Karpenter는
+계속 제외**로 결정했다. "과하지 않게"의 선은 Karpenter 앞에 있다고 판단 — CA는 노드그룹
+max=3 여유가 이미 코드에 있어 작업량이 크지 않고, "HPA로 파드가 Pending → CA가 노드 추가"
+시연은 파드/노드 계층 구분을 실증하는 좋은 서사다. 다만 우선순위는 발표자료 완성 뒤.
+
+**반영한 것 (매니페스트 repo `70b83a9`)**
+
+- `hpa.yaml` 신규 — CPU 평균 50% 기준 2~6 레플리카. 분모는 deployment의 `requests.cpu=100m`.
+  min 2는 AZ 분산 전제, max 6(=600m)은 노드 2대 여유 내 상한
+- `kustomization.yaml` resources에 등록 — 다음 apply 때 ArgoCD가 자동 배포
+
+**전제 조건과 주의점**
+
+- **metrics-server 필수** — EKS 기본 미설치. 없으면 HPA TARGETS가 `<unknown>`으로 표시되며
+  동작하지 않는다. 재기동 루틴에 ⑨로 추가
+- 우리 앱은 Claude API 응답 대기가 대부분이라 **대기형 부하로는 CPU가 안 오른다** —
+  시연 시 연산형 부하(busybox 무한루프 등)를 걸 것
+- 축소는 기본 5분 안정화 창 이후 — "부하 껐는데 왜 안 줄지?"는 정상 동작
+
+**검증은 다음 apply 때**: `kubectl get hpa -w`로 2→6→2 사이클 확인 + 캡처(발표자료 시연 재료).
+
+---
+
 ## 현재 상태
 
 **1·2·3·4주차 완료 + 전체 리허설 통과(8/14).** 남은 것은 5주차(문서 정리·발표자료)와 백로그.
@@ -436,6 +461,17 @@ troubleshooting.md 6번째 사례.
 **⑦ Dockerfile 숫자 UID (runAsNonRoot 근본 대책, 2026-08-06 등록)**
 
 현재는 매니페스트의 `runAsUser: 1000`으로 보완 중. 다음 이미지 변경 때 `USER 1000` 반영.
+
+**⑧ HPA 실동작 검증 (2026-08-26 매니페스트 반영 완료 — apply 대기)**
+
+hpa.yaml은 매니페스트 repo에 반영됨. 다음 apply 때 metrics-server 설치(루틴 ⑨) 후
+연산형 부하로 2→6→2 사이클 검증 + `kubectl get hpa -w` 캡처(발표자료 시연 재료).
+
+**⑨ Cluster Autoscaler — 보너스 백로그 (2026-08-26 등록)**
+
+노드그룹 max=3 여유가 코드에 이미 있어 IRSA 1개 + Helm 설치면 됨. "HPA 증설 → 파드
+Pending → CA 노드 추가 → 해소" 시연으로 파드/노드 계층 구분을 실증 가능.
+우선순위는 발표자료 완성 뒤. Karpenter는 규모 대비 과잉으로 계속 제외.
 
 **⑤ 앱 개선 백로그 — 요청사항 접수 예정 (2026-08-06 결정)**
 
@@ -507,6 +543,11 @@ kubectl apply -f monitoring/alert-rules.yaml
 helm install cloudwatch-exporter prometheus-community/prometheus-cloudwatch-exporter \
   -n monitoring -f monitoring/values-cloudwatch.yaml \
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$(cd terraform && terraform output -raw cloudwatch_exporter_role_arn)"
+
+# ⑨ metrics-server (HPA 전제 — 2026-08-26부터. 없으면 HPA TARGETS가 <unknown>)
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ 2>/dev/null
+helm install metrics-server metrics-server/metrics-server -n kube-system
+# 검증: kubectl top nodes 응답 확인 → kubectl get hpa -n app 의 TARGETS에 수치 표시
 
 # 종료 (작업 후 반드시 — 순서 주의. 4주차부터 4단계)
 kubectl delete application summarizer -n argocd  # ① selfHeal이 Ingress를 되살리므로 먼저

@@ -78,6 +78,11 @@
 - **완료의 기준이 계층마다 다르다**: rollout 성공은 쿠버네티스 내부 기준, ALB의 타깃 전환(draining/헬스체크)은 비동기
 - 해법: Pod Readiness Gate(ALB healthy가 readiness 조건에 주입) + preStop sleep
 
+**Q. HPA와 Cluster Autoscaler의 차이는?**
+- **"HPA는 파드를, CA는 노드를 늘린다"** — HPA는 CPU 사용률(분모=requests) 기준으로 레플리카 수를 조절하고, 노드가 꽉 차 파드가 Pending이 되면 그때 CA가 노드를 추가한다. 계층이 다르고 담당 도구가 다르다
+- 이 프로젝트는 HPA(2~6, CPU 50%)를 매니페스트에 반영. 전제 조건인 **metrics-server가 EKS에 기본 미설치**라는 함정, 축소는 5분 안정화 창 이후라는 특성까지 문서화
+- 꼬리질문 대비: 우리 앱은 Claude API 대기가 대부분이라 대기형 부하로는 CPU가 안 오른다 — 시연에는 연산형 부하가 필요 (앱의 병목 특성과 스케일링 지표가 맞아야 한다는 교훈)
+
 **Q. 파드가 CreateContainerConfigError면 뭘 보나?**
 - `kubectl describe pod`의 Events — 원인이 항상 명시된다. 이미지 풀 성공 이후, 시작 이전의 설정 검증 실패(Secret 누락, securityContext 검증 불가 등)
 - 겪은 사례: `runAsNonRoot` + 이름 기반 USER → kubelet이 UID를 판정 못해 거부 → `runAsUser: 1000` 명시
