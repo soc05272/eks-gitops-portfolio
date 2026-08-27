@@ -118,4 +118,6 @@ AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보�
 - [ADR-002: 클러스터 내 PostgreSQL 대신 RDS를 선택한 이유](docs/adr/002-why-rds.md)
 - [ADR-003: NAT Gateway를 단일 AZ 1개로 구성한 이유](docs/adr/003-single-nat.md)
 
-**운영 문서**: [worklog.md](docs/worklog.md) — 날짜별 작업 로그, 실전 검증된 재기동 루틴(8단계)·종료 절차(4단계)
+**운영 문서**: [worklog.md](docs/worklog.md) — 날짜별 작업 로그, 실전 검증된 재기동 루틴(9단계)·종료 절차(4단계)
+
+**발표자료**: [presentation.pptx](docs/presentation.pptx) — 19장, 발표 노트 내장 (아키텍처 · 시연 · 트러블슈팅 · 의사결정)
