@@ -32,3 +32,6 @@ __pycache__/
 # 모니터링 — Slack Webhook 등 비밀값 포함 파일
 monitoring/values-secret.yaml
 .slack_webhook
+
+# 개인 메모 — 공개 repo 제외
+docs/memo-personal.md

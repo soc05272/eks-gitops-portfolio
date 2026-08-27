@@ -11,7 +11,7 @@
 | 기간 | 2026.07.24 ~ 2026.08 (주말·저녁 활용, 실작업 약 7일) |
 | 리전 | ap-northeast-2 (서울) |
 | 핵심 기술 | Terraform, EKS, RDS(PostgreSQL), GitHub Actions(OIDC), ArgoCD, Kustomize, Prometheus/Grafana, CloudWatch, Claude API |
-| 규모 | Terraform 리소스 78개 · 트러블슈팅 기록 6건 · ADR 3건 |
+| 규모 | Terraform 리소스 78개 · 트러블슈팅 기록 7건 · ADR 3건 · 수명주기 재현 5회 |
 
 ### 왜 이 프로젝트인가
 
@@ -70,7 +70,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 ├── .github/workflows/  # CI: 빌드 → ECR 푸시 → manifest repo 태그 업데이트
 └── docs/
     ├── adr/               # 의사결정 기록 3건
-    ├── troubleshooting.md # 장애 분석 6건 (증상/원인분석/해결/배운점)
+    ├── troubleshooting.md # 장애 분석 7건 (증상/원인분석/해결/배운점)
     └── worklog.md         # 날짜별 작업 로그 + 재기동/종료 루틴
 ```
 
@@ -110,6 +110,7 @@ AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보�
 4. CloudWatch 타임스탬프 함정 — exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
 5. ArgoCD 토큰 오류 재발 — 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
 6. 롤링 배포 직후 ALB 순단 — rollout 성공이 LB 무중단을 보장하지 않는다
+7. Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측 (OOMKilled)
 
 **의사결정 기록 (ADR)**:
 

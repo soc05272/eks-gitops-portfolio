@@ -44,7 +44,7 @@
 - **Ingress**: ALB Controller가 선언을 읽어 실제 ALB 프로비저닝. terraform state 밖 리소스라 destroy 전 선삭제 필요 — 종료 절차 4단계의 이유
 - **securityContext**: `runAsNonRoot` + `runAsUser: 1000`
 - **StorageClass(gp3) + PVC + EBS CSI**: Prometheus 영구 볼륨. PVC 방치 시 고아 EBS가 조용히 과금되는 것까지 종료 절차에 반영
-- **HPA**: CPU 평균 50% 기준 2~6 레플리카 자동 증감 (매니페스트 반영 완료, 실동작 검증은 다음 apply 예정). 분모는 `requests.cpu` — metrics-server가 전제 조건이며 EKS에는 기본 미설치라는 함정까지 문서화
+- **HPA**: CPU 평균 50% 기준 2~6 레플리카 자동 증감 — **2→6→2 사이클 실증 완료** (CPU 306% 감지 증설, 안정화 창 후 축소). 분모는 `requests.cpu`, metrics-server 전제. 증설 중 Pending("Too many pods")으로 **HPA의 한계(노드 계층)까지 관찰**
 - **네임스페이스 분리**: app / argocd / monitoring
 
 ## 5. CI/CD — GitHub Actions + ArgoCD + Kustomize (GitOps)
@@ -86,4 +86,4 @@
 | Karpenter | 노드 2대 고정 규모 — 관리형 노드그룹으로 충분 |
 | Secrets Manager | 월 요금·운영 부담이 규모 대비 과잉, K8s Secret으로 "코드에 비밀값 0" 조건은 충족 |
 | Multi-AZ RDS | 비용 2배 — 포트폴리오 환경에서 인지하고 제외, 프로덕션 기준은 문서에 명시 |
-| Cluster Autoscaler | 보너스 백로그 — HPA와 세트로 "파드 Pending → 노드 추가" 시연 가치가 있으나, 발표자료 완성이 우선 |
+| Cluster Autoscaler | 보너스 백로그 — HPA의 Pending 실증("Too many pods")이 도입 근거. 발표자료 완성 후 진행 |
