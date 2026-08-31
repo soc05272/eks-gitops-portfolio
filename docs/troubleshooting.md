@@ -1,6 +1,7 @@
 # 트러블슈팅 기록
 
 > 형식: 증상 → 원인 분석 → 해결 → 배운 점. 삽질한 날 바로 기록할 것 (나중에 쓰려면 다 잊어버린다).
+> 등급: **S** 구축·파이프라인 전면 불능 / **A** 서비스·배포 경로 중단 / **B** 부분 결손·단발 영향
 
 ---
 
@@ -29,6 +30,8 @@
 <!-- 아래에 실제 사례를 추가 -->
 
 ## [2026-07-29] EKS 노드그룹이 CREATE_FAILED — AWS Free Plan 계정의 인스턴스 타입 제약
+
+> **장애 등급: S** — 클러스터 구축 자체 불가, 38분간 무증상
 
 **증상**
 
@@ -116,6 +119,8 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
 
 ## [2026-08-06] 파드 CreateContainerConfigError — runAsNonRoot는 이름 기반 USER를 검증하지 못한다
 
+> **장애 등급: A** — 서비스 파드 전원 기동 불가 (첫 배포 블로커)
+
 **증상**
 
 2주차 첫 배포에서 파드 2개가 모두 `CreateContainerConfigError` 상태로 멈췄다.
@@ -170,6 +175,8 @@ securityContext:
 ---
 
 ## [2026-08-06] GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID
+
+> **장애 등급: S** — CI/CD 파이프라인 전면 불능, 원인이 에러에 드러나지 않음
 
 **증상**
 
@@ -234,7 +241,43 @@ Condition = {
 
 ---
 
+## [2026-08-07] RDS 알람 지표가 Prometheus에 안 잡힘 — CloudWatch 타임스탬프 함정
+
+> **장애 등급: B** — RDS 알람 경로 무력화 (지표 미유입, 서비스 영향 없음)
+
+**증상**
+
+cloudwatch-exporter를 설치하고 RDS CPU 알람 규칙을 배포했는데, Prometheus에서
+`aws_rds_cpuutilization_average`를 조회하면 결과가 비어 있었다. exporter 파드는 정상
+Running이고 에러 로그도 없었다.
+
+**원인 분석**
+
+- exporter의 `/metrics`를 직접 curl해 보니 지표는 존재했고, **값 끝에 과거 타임스탬프**가
+  붙어 있었다 — CloudWatch 원본 지표의 생성 시각을 그대로 전달하고 있던 것
+- CloudWatch 지표는 수 분 지연되어 집계되므로, 그 원본 타임스탬프는 항상 현재보다
+  과거다. Prometheus의 인스턴트 쿼리는 기본 **5분 룩백** 안의 샘플만 반환하므로,
+  지연이 룩백을 넘는 순간 "지표는 수집되는데 조회는 빈" 상태가 된다
+- 즉 수집(스크레이프)은 성공, 저장도 성공 — **시간축이 어긋나 조회만 실패**하는 구조
+
+**해결**
+
+exporter 설정에 `set_timestamp: false`를 지정 — CloudWatch 원본 시각 대신
+**스크레이프 시각**을 샘플에 붙이게 했다. 적용 직후 쿼리에 값이 잡혔고(CPU 3.8%),
+RDS CPU 알람 규칙까지 로드 확인.
+
+**배운 점**
+
+- "지표가 안 보인다"의 원인이 수집 실패가 아닐 수 있다 — **exporter의 `/metrics`를
+  직접 curl해 원본을 보면** 수집/저장/조회 중 어느 단계의 문제인지 바로 갈린다
+- 서로 다른 시스템을 잇는 지점에서는 **시간축(타임스탬프)의 소유권**이 암묵적 함정이
+  된다 — 지연 집계형 소스(CloudWatch)는 원본 시각을 버리는 게 정답일 수 있다
+
+---
+
 ## [2026-08-14] ArgoCD `Invalid username or token` 재발 — 클립보드 경유 등록의 구조적 함정
+
+> **장애 등급: A** — CD(ArgoCD) 경로 불능 · 재발성 (앱 가동은 유지)
 
 **증상**
 
@@ -308,6 +351,8 @@ unset TOKEN
 
 ## [2026-08-14] 롤링 배포 직후 ALB 응답 실패 1회 — rollout 성공이 LB 무중단을 보장하지 않는다
 
+> **장애 등급: B** — 단발 요청 실패 (무중단 설계의 빈틈 발견)
+
 **증상**
 
 GitOps 리허설에서 0.2.1 롤링 배포가 `deployment successfully rolled out`으로 끝난 **직후**,
@@ -350,6 +395,8 @@ kubectl label namespace app elbv2.k8s.aws/pod-readiness-gate-inject=enabled
 ---
 
 ## [2026-08-26] Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측
+
+> **장애 등급: B** — 관측 구성요소 부분 장애 (자동 재시작으로 간헐 복구)
 
 **증상**
 
