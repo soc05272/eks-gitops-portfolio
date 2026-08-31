@@ -56,7 +56,23 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 | **서비스 E2E** | 인터넷 → ALB → 파드 → Claude API 요약 생성 → RDS 저장/조회 전 구간 |
 | **GitOps 자동 배포** | `git push` 하나로 CI(OIDC) → ECR → 매니페스트 자동 커밋 → ArgoCD 무중단 롤링 → 신버전 응답 확인. 롤백은 매니페스트 repo `git revert` 한 번 |
 | **알람** | 파드 강제 재시작 → Prometheus 규칙 발화 → **Slack 실수신** (복구 통보까지) |
-| **수명주기 재현성** | `terraform apply` + 문서화된 8단계 루틴으로 전체 스택을 20분 내 복원 — **3회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
+| **수명주기 재현성** | `terraform apply` + 문서화된 9단계 루틴으로 전체 스택을 20분 내 복원 — **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
+| **오토스케일링(HPA)** | 부하 투입 → CPU 306% 감지 → 파드 2→6 증설 → 부하 제거 → 안정화 창 후 2 복귀. 증설 중 Pending으로 HPA의 한계(노드 계층)까지 관찰 |
+
+### 실증 스크린샷
+
+| | |
+|---|---|
+| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD** — Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA** — 2~6 레플리카, TARGETS 수집 중 |
+| <img src="docs/images/app%20pods%20monitoring1.png" width="100%"> **Grafana** — 부하 투입 직후 파드 CPU 급등 | <img src="docs/images/app%20pods%20monitoring4.png" width="100%"> **Grafana** — 증설·축소 사이클 전체 파형 |
+| <img src="docs/images/PostgresSQL%20DB.png" width="100%"> **RDS** — PostgreSQL 17.9 (현업 버전 정렬) | <img src="docs/images/eks%20cluster%20status.png" width="100%"> **EKS** — 클러스터 활성 상태 |
+
+<details><summary>추가 스크린샷</summary>
+
+<img src="docs/images/app%20pods%20monitoring2.png" width="70%">
+<img src="docs/images/app%20pods%20monitoring3.png" width="70%">
+
+</details>
 
 ## 4. Repo 구조
 
