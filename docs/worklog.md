@@ -508,6 +508,11 @@ troubleshooting.md 6번째 사례.
 Pending → CA 노드 추가 → 해소" 시연으로 파드/노드 계층 구분을 실증 가능.
 우선순위는 발표자료 완성 뒤. Karpenter는 규모 대비 과잉으로 계속 제외.
 
+CA 작업 시 확보할 캡처 3종 (발표자료 보강용):
+① `kubectl get hpa -w` — REPLICAS 2→4→6 변화가 여러 줄로 남은 화면 (증설 순간)
+② `kubectl get pods` — 6개 중 1개 Pending("Too many pods") 실물
+③ CA 도입 후 Pending이 노드 추가로 해소되는 before/after
+
 **⑤ 앱 개선 백로그 — 요청사항 접수 예정 (2026-08-06 결정)**
 
 2주차 E2E 검증 후 "애플리케이션의 질과 내용은 추후 변경이 필요하다"고 판단.
