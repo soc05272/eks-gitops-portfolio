@@ -39,9 +39,9 @@ ADR로 남겼고, 같은 환경을 다섯 번 부수고 다시 세웠습니다. 
 | 항목 | 내용 |
 |---|---|
 | 목표 | Claude API를 연동한 AI 텍스트 요약 서비스를 EKS 위에 GitOps 방식으로 배포하고, 모니터링/알람까지 구축 |
-| 기간 | 2026.07.24 ~ 2026.08 (주말·저녁 활용, 실작업 약 7일) |
+| 기간 | 2026.07.24 ~ 2026.08 (주말·저녁 활용, 실작업 약 8일) |
 | 리전 | ap-northeast-2 (서울) |
-| 핵심 기술 | Terraform, EKS, RDS(PostgreSQL), GitHub Actions(OIDC), ArgoCD, Kustomize, Prometheus/Grafana, CloudWatch, Claude API |
+| 핵심 기술 | Terraform, EKS, HPA, RDS(PostgreSQL 17), GitHub Actions(OIDC), ArgoCD, Kustomize, Prometheus/Grafana, CloudWatch, Claude API |
 | 규모 | Terraform 리소스 78개 · 트러블슈팅 기록 7건 · ADR 3건 · 수명주기 재현 5회 |
 
 ### 왜 이 프로젝트인가
@@ -106,9 +106,13 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 ├── scripts/            # 배포·Secret 생성 스크립트 (계정 고유값·비밀값을 repo 밖에 유지)
 ├── .github/workflows/  # CI: 빌드 → ECR 푸시 → manifest repo 태그 업데이트
 └── docs/
-    ├── adr/               # 의사결정 기록 3건
-    ├── troubleshooting.md # 장애 분석 7건 (증상/원인분석/해결/배운점)
-    └── worklog.md         # 날짜별 작업 로그 + 재기동/종료 루틴
+    ├── adr/                     # 의사결정 기록 3건
+    ├── images/                  # 실증 스크린샷 · 아키텍처 구성도
+    ├── troubleshooting.md       # 장애 분석 7건 (S/A/B 등급, 증상/원인분석/해결/배운점)
+    ├── worklog.md               # 날짜별 작업 로그 + 재기동/종료 루틴
+    ├── Architecture.drawio      # 구성도 원본 (+ architecture.pdf)
+    ├── presentation.pptx        # 발표자료 20장 (발표 노트 내장)
+    └── tech-stack · interview-prep · app-logic.md  # 기술스택 · 면접 · 앱 로직 정리
 ```
 
 > k8s 매니페스트(Kustomize)는 GitOps 패턴에 따라 **별도 repo**(`eks-gitops-manifests`, 비공개)로 분리.
@@ -121,6 +125,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 - [x] **3주차 — CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
 - [x] **4주차 — 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
 - [x] **전체 리허설 (8/14)**: 재기동 → 전 기능 재검증 → 회수, 수명주기 완주
+- [x] **검증 회차 (8/26)**: HPA 2→6→2 사이클 실증 · PostgreSQL 17 전환 확인
 - [x] **5주차 — 마무리**: 문서 정리 · 발표자료(20장) · 아키텍처 구성도(draw.io) 완성
 
 **개선 백로그**: HPA 실동작 검증(매니페스트 반영 완료, CPU 50% 기준 2~6 레플리카) ·
@@ -132,6 +137,7 @@ AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보�
 상시 가동 시 월 약 $164 (EKS 컨트롤플레인 ~$73 + NAT ~$40 + Spot 노드 + RDS).
 
 - 작업하지 않는 날은 `terraform destroy`, 작업 시 `terraform apply` — **IaC이기에 가능한 운영 방식이며 그 자체가 검증 포인트**. 실제로 하루 종일 리허설한 날의 비용이 2천 원 미만
+- **실측**: 7월 확정 청구서 기준 실사용 $1.27 · **실제 카드 청구 $0** (전액 크레딧 차감)
 - Terraform state는 S3 백엔드에 보관하여 destroy/apply 반복에도 안전
 - EKS 노드는 Spot 인스턴스, NAT Gateway는 단일 AZ 1개 ([ADR-003](docs/adr/003-single-nat.md))
 - destroy 후에는 state 밖 리소스(컨트롤러가 만든 ALB, PVC의 EBS)까지 전수검증 — 고아 리소스의 조용한 과금 차단
@@ -139,15 +145,15 @@ AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보�
 
 ## 8. 트러블슈팅과 의사결정
 
-**[트러블슈팅 기록](docs/troubleshooting.md)** — 전부 증상/원인분석/해결/배운점 형식:
+**[트러블슈팅 기록](docs/troubleshooting.md)** — S/A/B 등급 분류, 증상/원인분석/해결/배운점 형식:
 
-1. EKS 노드그룹 CREATE_FAILED — AWS Free Plan의 인스턴스 타입 제약 (ASG 활동 로그로 규명)
-2. CreateContainerConfigError — `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
-3. GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
-4. CloudWatch 타임스탬프 함정 — exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
-5. ArgoCD 토큰 오류 재발 — 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
-6. 롤링 배포 직후 ALB 순단 — rollout 성공이 LB 무중단을 보장하지 않는다
-7. Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측 (OOMKilled)
+1. **[S]** EKS 노드그룹 CREATE_FAILED — AWS Free Plan의 인스턴스 타입 제약 (ASG 활동 로그로 규명)
+2. **[A]** CreateContainerConfigError — `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
+3. **[S]** GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
+4. **[B]** CloudWatch 타임스탬프 함정 — exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
+5. **[A]** ArgoCD 토큰 오류 재발 — 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
+6. **[B]** 롤링 배포 직후 ALB 순단 — rollout 성공이 LB 무중단을 보장하지 않는다
+7. **[B]** Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측 (OOMKilled)
 
 **의사결정 기록 (ADR)**:
 
