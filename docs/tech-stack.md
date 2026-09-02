@@ -73,7 +73,7 @@
 ## 8. 협업·운영 도구
 
 - **git / GitHub / gh CLI**: filter-branch로 커밋 히스토리에서 계정 ID 제거(공개 전 세탁), fine-grained PAT 운영, gh secret 관리
-- **kubectl / helm / aws CLI**: 재기동 루틴 8단계·종료 절차 4단계를 문서화된 명령으로 표준화
+- **kubectl / helm / aws CLI**: 재기동 루틴 9단계·종료 절차 4단계를 문서화된 명령으로 표준화
 - **AWS CloudTrail**: OIDC 인증 실패 디버깅의 결정적 도구 — "상대가 실제 보낸 값"을 보는 곳
 
 ---
@@ -87,3 +87,4 @@
 | Secrets Manager | 월 요금·운영 부담이 규모 대비 과잉, K8s Secret으로 "코드에 비밀값 0" 조건은 충족 |
 | Multi-AZ RDS | 비용 2배 — 포트폴리오 환경에서 인지하고 제외, 프로덕션 기준은 문서에 명시 |
 | Cluster Autoscaler | 보너스 백로그 — HPA의 Pending 실증("Too many pods")이 도입 근거. 발표자료 완성 후 진행 |
+| S3 Gateway Endpoint | 무료로 NAT 우회가 가능하지만, 이미지 66MB 단일 앱 규모에서는 NAT 처리비가 무시 가능한 수준 — 트래픽 증가 시 1순위 도입 항목으로 인지 |

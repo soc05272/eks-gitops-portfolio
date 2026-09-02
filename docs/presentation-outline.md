@@ -1,3 +1,4 @@
+> ⚠️ 초기 14장 구성안입니다. 최종본은 docs/presentation.pptx (20장, 발표 노트 내장) 기준.
 # 발표자료 구성안 — EKS GitOps Portfolio
 
 > 가정: 발표 10~12분 + Q&A. 슬라이드 14장.

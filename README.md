@@ -121,7 +121,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 - [x] **3주차 — CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
 - [x] **4주차 — 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
 - [x] **전체 리허설 (8/14)**: 재기동 → 전 기능 재검증 → 회수, 수명주기 완주
-- [ ] **5주차 — 마무리**: 문서 정리(진행 중), 발표자료(PPT)
+- [x] **5주차 — 마무리**: 문서 정리 · 발표자료(20장) · 아키텍처 구성도(draw.io) 완성
 
 **개선 백로그**: HPA 실동작 검증(매니페스트 반영 완료, CPU 50% 기준 2~6 레플리카) ·
 AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID ·
