@@ -1,0 +1,41 @@
+# 비용 가드레일 — destroy를 깜빡했을 때 조용히 과금이 쌓이는 것을 막는다.
+# 이 프로젝트의 고정비 대부분(EKS $0.10/h + NAT $0.059/h)이 켜둔 시간에 정비례하므로,
+# 사후 청구서가 아니라 임계치 도달 시점에 알림을 받는 것이 중요하다.
+#
+# Budgets는 글로벌 서비스이며 리전과 무관하게 동작한다.
+
+resource "aws_budgets_budget" "monthly" {
+  name         = "${var.project}-monthly"
+  budget_type  = "COST"
+  limit_amount = var.monthly_budget_usd
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  # 실제 사용액 80% — "이번 달 예산의 대부분을 썼다"는 경고
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  # 실제 사용액 100% — 예산 초과
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  # 예측 기반 알림 — destroy를 잊고 클러스터를 켜둔 경우 실제 초과 전에 잡아준다.
+  # 실측 알림만 있으면 이미 돈이 나간 뒤에 알게 되므로 이 알림이 실질적인 방어선이다.
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+}

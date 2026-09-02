@@ -6,15 +6,15 @@
 # IRSA로 전용 Role을 ServiceAccount(kube-system:ebs-csi-controller-sa)에 바인딩한다.
 
 module "ebs_csi_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
-  role_name             = "${var.project}-ebs-csi"
+  role_name = "${var.project}-ebs-csi"
   attach_ebs_csi_policy = true # AWS 관리형 AmazonEBSCSIDriverPolicy 연결
 
   oidc_providers = {
     main = {
-      provider_arn               = module.eks.oidc_provider_arn
+      provider_arn = module.eks.oidc_provider_arn
       namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
     }
   }
@@ -22,7 +22,7 @@ module "ebs_csi_irsa" {
 
 # EKS 관리형 애드온으로 설치 — 버전 관리·업그레이드를 EKS가 담당
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
+  cluster_name = module.eks.cluster_name
+  addon_name = "aws-ebs-csi-driver"
   service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
 }

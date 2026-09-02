@@ -6,10 +6,10 @@
 #
 # 정책 본문은 모듈이 공식 iam_policy.json과 동일한 내용을 내장하고 있어 별도 파일이 필요 없다.
 module "alb_controller_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
-  role_name                              = "${var.project}-alb-controller"
+  role_name = "${var.project}-alb-controller"
   attach_load_balancer_controller_policy = true
 
   oidc_providers = {
