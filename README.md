@@ -52,22 +52,12 @@ ADR로 남겼고, 같은 환경을 다섯 번 부수고 다시 세웠습니다. 
 
 ## 3. 아키텍처
 
+![런타임 아키텍처 구성도](docs/images/architecture.png)
+
 ```
 [배포 파이프라인 — 사람의 개입은 git push 하나]
-git push ─▶ GitHub Actions ──(OIDC — 액세스 키 없는 인증)──▶ ECR (이미지 push)
-(app repo)      └── 이미지 태그 자동 커밋 ─▶ manifest repo(비공개, Kustomize)
-                                                  ▲ auto-sync (drift 감지·자동 복구)
-                                               ArgoCD ──▶ 무중단 롤링 배포
-┌─ VPC 10.0.0.0/16 (2 AZ) ─────────────────────────┼──────────────────────────┐
-│  Public Subnet   : ALB(internet-facing) · NAT ×1 ▼                          │
-│  Private Subnet  : EKS 1.31 노드그룹 (t3.medium ×2, Spot)                   │
-│                    ├─ App Pods 2~6 (HPA) — FastAPI, Claude API 호출(NAT)    │
-│                    ├─ ALB Controller · ArgoCD · EBS CSI  ← IRSA로 권한 분리 │
-│                    └─ Prometheus · Grafana · Alertmanager ──▶ Slack 알람    │
-│  DB Subnet       : RDS PostgreSQL 17 (db.t3.micro, Single-AZ)               │
-└──────────────────────────────────────────────────────────────────────────────┘
-[사용자 트래픽]  인터넷 ─▶ ALB ─▶ 파드(target-type: ip 직접 라우팅) ─▶ RDS
-[RDS 지표]      CloudWatch ─▶ cloudwatch-exporter ─▶ Prometheus (알람 경로 단일화)
+git push ─▶ GitHub Actions ──(OIDC 키리스 인증)──▶ ECR
+(app repo)      └── 이미지 태그 자동 커밋 ─▶ manifest repo(비공개) ◀─ ArgoCD auto-sync ─▶ 무중단 롤링 배포
 ```
 
 - 컨트롤러·익스포터별 **IRSA**(IAM Roles for Service Accounts) 4종으로 파드 단위 최소 권한
