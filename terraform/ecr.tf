@@ -1,7 +1,7 @@
 resource "aws_ecr_repository" "app" {
-  name                 = "${var.project}-app"
+  name = "${var.project}-app"
   image_tag_mutability = "IMMUTABLE"
-  force_delete         = true # destroy 시 이미지가 남아 있어도 삭제
+  force_delete = true # destroy 시 이미지가 남아 있어도 삭제
 
   image_scanning_configuration {
     scan_on_push = true
@@ -14,10 +14,10 @@ resource "aws_ecr_lifecycle_policy" "app" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 10 images"
+      description = "Keep last 10 images"
       selection = {
-        tagStatus   = "any"
-        countType   = "imageCountMoreThan"
+        tagStatus = "any"
+        countType = "imageCountMoreThan"
         countNumber = 10
       }
       action = { type = "expire" }

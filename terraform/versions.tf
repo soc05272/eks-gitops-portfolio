@@ -3,7 +3,7 @@ terraform {
 
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
+      source = "hashicorp/aws"
       version = "~> 5.0"
     }
   }
@@ -12,8 +12,8 @@ terraform {
   # 실제 값은 gitignore 대상인 backend.hcl에 두고 아래처럼 초기화한다.
   #   terraform init -backend-config=backend.hcl
   backend "s3" {
-    key     = "eks-gitops-portfolio/terraform.tfstate"
-    region  = "ap-northeast-2"
+    key = "eks-gitops-portfolio/terraform.tfstate"
+    region = "ap-northeast-2"
     encrypt = true
   }
 }

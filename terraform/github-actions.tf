@@ -5,7 +5,7 @@
 # 클러스터의 IRSA용 OIDC provider와는 별개다 — 그쪽은 "파드→AWS", 이쪽은 "GitHub→AWS".
 
 module "github_oidc_provider" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-github-oidc-provider"
+  source = "terraform-aws-modules/iam/aws//modules/iam-github-oidc-provider"
   version = "~> 5.0"
 }
 
@@ -19,7 +19,7 @@ resource "aws_iam_role" "gha_ecr" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "GithubOidcAuth"
+      Sid = "GithubOidcAuth"
       Effect = "Allow"
       Principal = {
         Federated = module.github_oidc_provider.arn
@@ -37,7 +37,7 @@ resource "aws_iam_role" "gha_ecr" {
 }
 
 resource "aws_iam_role_policy_attachment" "gha_ecr" {
-  role       = aws_iam_role.gha_ecr.name
+  role = aws_iam_role.gha_ecr.name
   policy_arn = aws_iam_policy.gha_ecr_push.arn
 }
 
@@ -47,13 +47,13 @@ resource "aws_iam_policy" "gha_ecr_push" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "GetAuthToken"
-        Effect   = "Allow"
-        Action   = ["ecr:GetAuthorizationToken"]
+        Sid = "GetAuthToken"
+        Effect = "Allow"
+        Action = ["ecr:GetAuthorizationToken"]
         Resource = "*" # 이 액션은 리소스 단위 제한을 지원하지 않는다
       },
       {
-        Sid    = "PushPull"
+        Sid = "PushPull"
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",

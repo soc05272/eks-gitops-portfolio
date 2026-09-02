@@ -8,7 +8,7 @@ resource "aws_iam_policy" "cloudwatch_read" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadMetrics"
+      Sid = "ReadMetrics"
       Effect = "Allow"
       Action = [
         "cloudwatch:GetMetricData",
@@ -21,7 +21,7 @@ resource "aws_iam_policy" "cloudwatch_read" {
 }
 
 module "cloudwatch_exporter_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
   role_name = "${var.project}-cloudwatch-exporter"
@@ -32,7 +32,7 @@ module "cloudwatch_exporter_irsa" {
 
   oidc_providers = {
     main = {
-      provider_arn               = module.eks.oidc_provider_arn
+      provider_arn = module.eks.oidc_provider_arn
       namespace_service_accounts = ["monitoring:cloudwatch-exporter"]
     }
   }
