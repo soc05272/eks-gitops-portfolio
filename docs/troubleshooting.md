@@ -27,6 +27,20 @@
 
 ---
 
+## 한눈에 보기
+
+| 등급 | 사례 | 한 줄 |
+|---|---|---|
+| **S** | EKS 노드그룹 CREATE_FAILED (7/29) | 38분 무증상 실패 — 원인은 ASG 활동 로그에 |
+| **S** | GHA OIDC 인증 실패 (8/6) | sub 신형식 불일치 — CloudTrail로 실측값 확인 |
+| **A** | 파드 CreateContainerConfigError (8/6) | runAsNonRoot는 이름 USER를 검증 못 한다 |
+| **A** | ArgoCD 토큰 오류 재발 (8/14) | 재발은 절차를 바꾸라는 신호 |
+| **B** | CloudWatch 타임스탬프 함정 (8/7) | 수집은 되는데 조회만 실패하는 시간축 문제 |
+| **B** | 롤링 직후 ALB 순단 (8/14) | rollout 성공 ≠ LB 무중단 |
+| **B** | Grafana OOMKilled (8/26) | 리소스 제한은 실사용 패턴으로 검증 |
+
+---
+
 <!-- 아래에 실제 사례를 추가 -->
 
 ## [2026-07-29] EKS 노드그룹이 CREATE_FAILED — AWS Free Plan 계정의 인스턴스 타입 제약
