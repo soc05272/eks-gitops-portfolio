@@ -5,34 +5,12 @@
 
 ---
 
-## 템플릿
-
-### [날짜] 제목 (한 줄 요약)
-
-**증상**
-
-- 어떤 명령/작업에서 어떤 에러가 났는지 (에러 메시지 원문 포함)
-
-**원인 분석**
-
-- 어떻게 원인을 좁혀갔는지 (확인한 로그, 시도한 가설)
-
-**해결**
-
-- 최종 해결 방법 (코드/명령 포함)
-
-**배운 점**
-
-- 다음에 같은 문제를 만나면 어디부터 볼지
-
----
-
 ## 한눈에 보기
 
 | 등급 | 사례 | 한 줄 |
 |---|---|---|
-| **S** | EKS 노드그룹 CREATE_FAILED (7/29) | 38분 무증상 실패 — 원인은 ASG 활동 로그에 |
-| **S** | GHA OIDC 인증 실패 (8/6) | sub 신형식 불일치 — CloudTrail로 실측값 확인 |
+| **S** | EKS 노드그룹 CREATE_FAILED (7/29) | 38분 무증상 실패: 원인은 ASG 활동 로그에 |
+| **S** | GHA OIDC 인증 실패 (8/6) | sub 신형식 불일치: CloudTrail로 실측값 확인 |
 | **A** | 파드 CreateContainerConfigError (8/6) | runAsNonRoot는 이름 USER를 검증 못 한다 |
 | **A** | ArgoCD 토큰 오류 재발 (8/14) | 재발은 절차를 바꾸라는 신호 |
 | **B** | CloudWatch 타임스탬프 함정 (8/7) | 수집은 되는데 조회만 실패하는 시간축 문제 |
@@ -41,11 +19,9 @@
 
 ---
 
-<!-- 아래에 실제 사례를 추가 -->
+## [2026-07-29] EKS 노드그룹이 CREATE_FAILED: AWS Free Plan 계정의 인스턴스 타입 제약
 
-## [2026-07-29] EKS 노드그룹이 CREATE_FAILED — AWS Free Plan 계정의 인스턴스 타입 제약
-
-> **장애 등급: S** — 클러스터 구축 자체 불가, 38분간 무증상
+> **장애 등급: S**: 클러스터 구축 자체 불가, 38분간 무증상
 
 **증상**
 
@@ -66,14 +42,14 @@ InvalidParameterCombination - The specified instance type is not eligible for Fr
 
 `health.issues`가 비어 있어 노드그룹 API만으로는 원인을 알 수 없었다. 아래 순서로 좁혀갔다.
 
-1. **설정 문제부터 배제** — 클러스터 `ACTIVE`, 노드 IAM Role 존재, 시작 템플릿 생성됨,
+1. **설정 문제부터 배제**: 클러스터 `ACTIVE`, 노드 IAM Role 존재, 시작 템플릿 생성됨,
    프라이빗 서브넷 2개 모두 `0.0.0.0/0 → NAT` 라우팅 정상, NAT `available` 확인. 전부 이상 없음.
-2. **용량 문제 배제** — `describe-spot-price-history`로 서울 t3.medium Spot 가격이
+2. **용량 문제 배제**: `describe-spot-price-history`로 서울 t3.medium Spot 가격이
    $0.0158~0.0189로 정상 범위임을 확인. 용량 부족이면 가격이 튀거나 조회가 비어야 한다.
-3. **결정적 단서** — `describe-instances`에 인스턴스가 한 대도 없었고,
+3. **결정적 단서**: `describe-instances`에 인스턴스가 한 대도 없었고,
    `describe-spot-instance-requests`에 요청 이력조차 없었다.
    즉 "노드가 떠서 클러스터 조인에 실패한 것"이 아니라 **인스턴스 기동 자체가 거부**된 것.
-4. **원인 확정** — ASG가 생성된 뒤 `describe-scaling-activities`를 조회하니
+4. **원인 확정**: ASG가 생성된 뒤 `describe-scaling-activities`를 조회하니
    2분 간격으로 반복된 `Failed` 활동과 실패 사유가 그대로 남아 있었다.
 
 ```bash
@@ -106,11 +82,11 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
 
 두 가지 대응을 검토했다.
 
-1. **우회 — 노드 타입을 `c7i-flex.large`로 변경**: `t3.medium`과 총 메모리(8GB)·비용($0.036 →
+1. **우회(노드 타입을 `c7i-flex.large`로 변경)**: `t3.medium`과 총 메모리(8GB)·비용($0.036 →
    $0.037)이 사실상 동일한 대체재. 그러나 정책 안에서의 회피일 뿐이고, Spot + free-tier-eligible
    조합이 실제로 기동되는지 미검증이었으며, 이후 주차의 ALB·EBS에서 같은 계정 정책에 또 막힐
    위험이 남는다. (ARM `t4g.small`은 더 저렴하지만 AMI와 CI 빌드 아키텍처까지 연쇄 수정이라 제외)
-2. **근본 해결 — 계정을 Paid Plan으로 전환**: 인스턴스 타입 제약 자체가 사라진다. 크레딧은
+2. **근본 해결(계정을 Paid Plan으로 전환)**: 인스턴스 타입 제약 자체가 사라진다. 크레딧은
    이월되고($119.45), 12개월 프리티어가 추가로 열려 시간당 비용도 오히려 낮아진다.
 
 **→ 2번 채택.** `aws freetier upgrade-account-plan` API가 존재하지만 결제 관련 변경이라 콘솔에서
@@ -131,9 +107,9 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
 
 ---
 
-## [2026-08-06] 파드 CreateContainerConfigError — runAsNonRoot는 이름 기반 USER를 검증하지 못한다
+## [2026-08-06] 파드 CreateContainerConfigError: runAsNonRoot는 이름 기반 USER를 검증하지 못한다
 
-> **장애 등급: A** — 서비스 파드 전원 기동 불가 (첫 배포 블로커)
+> **장애 등급: A**: 서비스 파드 전원 기동 불가 (첫 배포 블로커)
 
 **증상**
 
@@ -175,22 +151,22 @@ securityContext:
 ```
 
 재빌드 없이 `kubectl apply`만으로 해결. 근본 대책은 Dockerfile에서부터 숫자 UID를 쓰는 것
-(`USER 1000` 또는 `useradd -u 1000`) — 다음 이미지 빌드 때 반영 예정.
+(`USER 1000` 또는 `useradd -u 1000`), 다음 이미지 빌드 때 반영 예정.
 
 **배운 점**
 
 - `CreateContainerConfigError`는 이미지 풀 성공 **이후**, 컨테이너 시작 **이전**의 설정
   검증 단계 실패다. Secret/ConfigMap 누락이 흔한 원인이지만 securityContext 검증 실패도
   여기에 속한다. 원인은 항상 `kubectl describe pod`의 Events에 명시된다
-- `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로** — Dockerfile의 `USER`가 이름이라면
+- `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로**, Dockerfile의 `USER`가 이름이라면
   매니페스트의 `runAsUser`로 보완하거나 Dockerfile을 숫자로 바꿔야 한다
 - 보안 설정은 "각자 올바름"이 아니라 "조합이 검증 가능함"까지 확인해야 한다
 
 ---
 
-## [2026-08-06] GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID
+## [2026-08-06] GitHub Actions OIDC 인증 실패: sub 클레임에 숨어 있던 @ID
 
-> **장애 등급: S** — CI/CD 파이프라인 전면 불능, 원인이 에러에 드러나지 않음
+> **장애 등급: S**: CI/CD 파이프라인 전면 불능, 원인이 에러에 드러나지 않음
 
 **증상**
 
@@ -240,12 +216,12 @@ Condition = {
 }
 ```
 
-부수 효과로 보안이 오히려 강해졌다 — 계정명이 바뀌거나 동명 계정이 재생성돼도 ID가 다르면
+부수 효과로 보안이 오히려 강해졌다. 계정명이 바뀌거나 동명 계정이 재생성돼도 ID가 다르면
 매치되지 않는다.
 
 **배운 점**
 
-- **OIDC "Not authorized" 디버깅은 CloudTrail `userIdentity`부터** — 실패 이벤트에서
+- **OIDC "Not authorized" 디버깅은 CloudTrail `userIdentity`부터**: 실패 이벤트에서
   requestParameters는 가려져도 상대가 제시한 sub/aud는 principalId·userName에 남는다.
   추측으로 정책을 고치는 것보다 실제 제시값을 보는 게 압도적으로 빠르다
 - 신뢰 정책의 문자열은 "내가 기대하는 값"이 아니라 **"상대가 실제로 보내는 값"**과
@@ -255,9 +231,9 @@ Condition = {
 
 ---
 
-## [2026-08-07] RDS 알람 지표가 Prometheus에 안 잡힘 — CloudWatch 타임스탬프 함정
+## [2026-08-07] RDS 알람 지표가 Prometheus에 안 잡힘: CloudWatch 타임스탬프 함정
 
-> **장애 등급: B** — RDS 알람 경로 무력화 (지표 미유입, 서비스 영향 없음)
+> **장애 등급: B**: RDS 알람 경로 무력화 (지표 미유입, 서비스 영향 없음)
 
 **증상**
 
@@ -268,30 +244,30 @@ Running이고 에러 로그도 없었다.
 **원인 분석**
 
 - exporter의 `/metrics`를 직접 curl해 보니 지표는 존재했고, **값 끝에 과거 타임스탬프**가
-  붙어 있었다 — CloudWatch 원본 지표의 생성 시각을 그대로 전달하고 있던 것
+  붙어 있었다. CloudWatch 원본 지표의 생성 시각을 그대로 전달하고 있던 것
 - CloudWatch 지표는 수 분 지연되어 집계되므로, 그 원본 타임스탬프는 항상 현재보다
   과거다. Prometheus의 인스턴트 쿼리는 기본 **5분 룩백** 안의 샘플만 반환하므로,
   지연이 룩백을 넘는 순간 "지표는 수집되는데 조회는 빈" 상태가 된다
-- 즉 수집(스크레이프)은 성공, 저장도 성공 — **시간축이 어긋나 조회만 실패**하는 구조
+- 즉 수집(스크레이프)은 성공, 저장도 성공, **시간축이 어긋나 조회만 실패**하는 구조
 
 **해결**
 
-exporter 설정에 `set_timestamp: false`를 지정 — CloudWatch 원본 시각 대신
+exporter 설정에 `set_timestamp: false`를 지정, CloudWatch 원본 시각 대신
 **스크레이프 시각**을 샘플에 붙이게 했다. 적용 직후 쿼리에 값이 잡혔고(CPU 3.8%),
 RDS CPU 알람 규칙까지 로드 확인.
 
 **배운 점**
 
-- "지표가 안 보인다"의 원인이 수집 실패가 아닐 수 있다 — **exporter의 `/metrics`를
+- "지표가 안 보인다"의 원인이 수집 실패가 아닐 수 있다. **exporter의 `/metrics`를
   직접 curl해 원본을 보면** 수집/저장/조회 중 어느 단계의 문제인지 바로 갈린다
 - 서로 다른 시스템을 잇는 지점에서는 **시간축(타임스탬프)의 소유권**이 암묵적 함정이
-  된다 — 지연 집계형 소스(CloudWatch)는 원본 시각을 버리는 게 정답일 수 있다
+  된다. 지연 집계형 소스(CloudWatch)는 원본 시각을 버리는 게 정답일 수 있다
 
 ---
 
-## [2026-08-14] ArgoCD `Invalid username or token` 재발 — 클립보드 경유 등록의 구조적 함정
+## [2026-08-14] ArgoCD `Invalid username or token` 재발: 클립보드 경유 등록의 구조적 함정
 
-> **장애 등급: A** — CD(ArgoCD) 경로 불능 · 재발성 (앱 가동은 유지)
+> **장애 등급: A**: CD(ArgoCD) 경로 불능 · 재발성 (앱 가동은 유지)
 
 **증상**
 
@@ -307,7 +283,7 @@ Invalid username or token. Password authentication is not supported for Git oper
 
 **원인 분석**
 
-등록된 값을 노출 없이 형태만 검사했다 — 길이·앞 몇 글자·줄 수만 보면 토큰이 맞는지
+등록된 값을 노출 없이 형태만 검사했다. 길이·앞 몇 글자·줄 수만 보면 토큰이 맞는지
 판정할 수 있다.
 
 ```bash
@@ -329,7 +305,7 @@ password에 들어간 것은 **등록 명령어 자체**였다. 진행 순서가
 
 **해결**
 
-클립보드를 데이터 경로에서 아예 제거했다 — hidden prompt로 토큰을 변수에 한 번 받아
+클립보드를 데이터 경로에서 아예 제거했다. hidden prompt로 토큰을 변수에 한 번 받아
 필요한 모든 곳(ArgoCD Secret + CI용 GitHub secret)에 등록하고 즉시 폐기한다.
 
 ```bash
@@ -345,7 +321,7 @@ printf '%s' "$TOKEN" | gh secret set MANIFEST_REPO_TOKEN --repo soc05272/eks-git
 unset TOKEN
 ```
 
-재등록 후에도 Application은 `Unknown`에 머물렀다 — 이전 비교 실패가 캐시되어 있어서다.
+재등록 후에도 Application은 `Unknown`에 머물렀다. 이전 비교 실패가 캐시되어 있어서다.
 `kubectl annotate application summarizer -n argocd argocd.argoproj.io/refresh=hard --overwrite`
 로 강제 새로고침하자 수 초 내 `Synced/Healthy`로 전환, 매니페스트 기준 이미지로 롤링 배포까지
 자동 수행됐다.
@@ -358,20 +334,20 @@ unset TOKEN
 - 비밀값 등록 실패의 1차 진단은 **값을 노출하지 않고 길이·접두사·줄 수만 확인**하는 것.
   토큰류는 형식이 정해져 있어(fine-grained PAT: 93자, `github_pat_` 접두사) 이것만으로
   "무엇이 잘못 들어갔는지"까지 특정된다
-- 자격증명을 고친 뒤 ArgoCD가 계속 `Unknown`이면 **hard refresh**부터 — 이전 실패 상태가
+- 자격증명을 고친 뒤 ArgoCD가 계속 `Unknown`이면 **hard refresh**부터, 이전 실패 상태가
   캐시되어 재시도가 즉시 반영되지 않을 수 있다
 
 ---
 
-## [2026-08-14] 롤링 배포 직후 ALB 응답 실패 1회 — rollout 성공이 LB 무중단을 보장하지 않는다
+## [2026-08-14] 롤링 배포 직후 ALB 응답 실패 1회: rollout 성공이 LB 무중단을 보장하지 않는다
 
-> **장애 등급: B** — 단발 요청 실패 (무중단 설계의 빈틈 발견)
+> **장애 등급: B**: 단발 요청 실패 (무중단 설계의 빈틈 발견)
 
 **증상**
 
 GitOps 리허설에서 0.2.1 롤링 배포가 `deployment successfully rolled out`으로 끝난 **직후**,
 ALB 경유 `curl -f /healthz`가 1회 HTTP 에러(exit 22)로 실패했다. 15초 뒤부터는 연속 3회
-모두 정상 응답. 상태코드는 미확보 — `-f`는 4xx/5xx 여부만 알려준다. 재현 시에는
+모두 정상 응답. 상태코드는 미확보, `-f`는 4xx/5xx 여부만 알려준다. 재현 시에는
 `curl -sw '%{http_code}'`로 코드까지 잡을 것.
 
 **원인 분석**
@@ -379,15 +355,15 @@ ALB 경유 `curl -f /healthz`가 1회 HTTP 에러(exit 22)로 실패했다. 15�
 쿠버네티스와 ALB의 **완료 판정 기준이 다르다**는 것이 핵심이다.
 
 - `rollout status`의 성공 기준: 신규 파드가 readiness 프로브를 통과하고 구 파드 종료가
-  시작됨 — **쿠버네티스 내부** 관점
+  시작됨 (**쿠버네티스 내부** 관점)
 - ALB의 트래픽 전환: 타깃 그룹에서 구 파드 IP의 등록 해제(draining)와 신규 파드 IP의
-  헬스체크 통과가 **비동기로** 진행 — 쿠버네티스 완료 시점과 어긋난다
+  헬스체크 통과가 **비동기로** 진행되어 쿠버네티스 완료 시점과 어긋난다
 
 이 프로젝트는 `target-type: ip`로 파드 IP를 직접 타깃 등록하므로, 롤링 중에
 "이미 종료됐지만 아직 draining 중인 구 파드" 또는 "떴지만 ALB 헬스체크 미통과인 신규
 파드"로 요청이 가는 짧은 창이 생긴다. 관측된 실패 1회는 이 창에 들어간 요청이다.
 
-**해결 (백로그 등록 — 발생 빈도가 낮아 5주차 이후 반영)**
+**해결 (백로그 등록: 발생 빈도가 낮아 5주차 이후 반영)**
 
 ALB 컨트롤러가 제공하는 **Pod Readiness Gate**가 표준 해법이다:
 
@@ -402,15 +378,15 @@ kubectl label namespace app elbv2.k8s.aws/pod-readiness-gate-inject=enabled
 **배운 점**
 
 - `rollout status` 성공은 쿠버네티스 관점의 완료다. **LB까지 포함한 무중단은 별도 장치
-  (readiness gate)가 필요하다** — "어느 계층의 완료인가"를 항상 구분할 것
+  (readiness gate)가 필요하다**, "어느 계층의 완료인가"를 항상 구분할 것
 - 검증 루프의 실패 1회를 "재시도하니 되네"로 넘기지 않고 원인을 특정해두면, 훗날
   프로덕션에서 배포 때마다 5xx가 튀는 문제의 답을 미리 가진 셈이 된다
 
 ---
 
-## [2026-08-26] Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측
+## [2026-08-26] Grafana CrashLoopBackOff: 보수적 리소스 제한의 한계 실측
 
-> **장애 등급: B** — 관측 구성요소 부분 장애 (자동 재시작으로 간헐 복구)
+> **장애 등급: B**: 관측 구성요소 부분 장애 (자동 재시작으로 간헐 복구)
 
 **증상**
 
@@ -428,20 +404,20 @@ monitoring-grafana-687f485f85-lvfnl   2/3   CrashLoopBackOff   2 (16s ago)
 - 4주차에 t3.medium 노드 절약을 위해 Grafana 메모리 제한을 256Mi로 보수적으로
   설정해뒀는데, HPA 부하 테스트 직후의 대시보드 조회(1시간 범위 CPU 그래프 등)가
   겹치면서 한계를 넘었다
-- 증상의 겉모습(터널 끊김)과 원인(컨테이너 OOM)의 계층이 달랐다 — 터널만 계속
+- 증상의 겉모습(터널 끊김)과 원인(컨테이너 OOM)의 계층이 달랐다. 터널만 계속
   다시 열었다면 원인 없이 증상만 반복됐을 것
 
 **해결**
 
 `helm upgrade --reuse-values --set grafana.resources.limits.memory=512Mi`로 즉시 복구.
 라이브 수정으로 끝내지 않고 **values.yaml에 실측 근거 주석과 함께 반영**(`bf6950c`)해
-다음 재기동 때 재발하지 않게 했다 — 라이브 상태와 코드의 일치가 IaC 운영의 전제.
+다음 재기동 때 재발하지 않게 했다. 라이브 상태와 코드의 일치가 IaC 운영의 전제.
 
 **배운 점**
 
-- 리소스 제한은 추정이 아니라 **실사용 패턴으로 검증**해야 한다 — "평소엔 충분"과
+- 리소스 제한은 추정이 아니라 **실사용 패턴으로 검증**해야 한다. "평소엔 충분"과
   "부하 조회 시 충분"은 다르다
 - 증상이 보이는 계층(네트워크 터널)과 원인이 있는 계층(컨테이너 메모리)은 다를 수
-  있다 — 재발하는 증상은 한 계층 아래를 볼 신호
+  있다. 재발하는 증상은 한 계층 아래를 볼 신호
 - 계획에 없던 실제 장애가 알람 채널에 이벤트로 찍히고, 진단·해결·코드 반영까지
   이어진 것 자체가 관측성 스택이 제 역할을 한 증거

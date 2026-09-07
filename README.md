@@ -1,9 +1,10 @@
-# EKS GitOps Portfolio — 온프레미스 솔루션 운영 경험의 클라우드 네이티브 전환
+# EKS GitOps Portfolio: 온프레미스 솔루션 운영 경험의 클라우드 네이티브 전환
 
-> **"관제하고 운영하던 클라우드를, 이번에는 직접 설계하다"** —
+> **"관제하고 운영하던 클라우드를, 이번에는 직접 설계하다"**
+>
 > 통합관제 솔루션(ZENIUS) 기술지원(KT Cloud·온프레미스)과 AI 클라우드 운영(NHN·Naver Cloud)에서
-> 겪은 수작업의 한계(수동 배포, 수동 장애 대응, 재구축의 어려움)를,
-> AWS 위에서 IaC + GitOps + 관측성으로 직접 해결해본 프로젝트입니다.
+> 겪은 수작업의 한계(수동 배포, 수동 장애 대응, 재구축의 어려움)를
+> AWS 위에서 IaC, GitOps, 관측성으로 직접 풀어본 프로젝트입니다.
 
 ## 목차
 
@@ -20,19 +21,17 @@
 
 ## 1. 프로젝트를 시작한 계기
 
-지금 회사에서 저는 통합관제 솔루션(ZENIUS)을 고객사 인프라에 구축하고 있습니다.
-매일 남의 인프라를 들여다보는 일입니다. 장애가 나면 로그를 뒤져 원인을 찾아내면서도,
-정작 이 인프라가 왜 이렇게 설계됐는지는 알 수 없었습니다. 제가 결정한 것이 아니었기
-때문입니다. 전 직장에서 AI 학습 환경을 Docker 이미지로 표준화해 제공 시간을 40%
-줄여봤을 때도 비슷했습니다. 자동화가 주는 효과는 분명히 체감했지만, 그 밑에 깔린
-클라우드는 여전히 남이 만들어 둔 것이었습니다.
+현재 저는 통합관제 솔루션(ZENIUS)을 고객사 인프라에 구축하고 기술지원하는 일을 하고 있습니다.
+장애가 발생하면 로그를 분석해 원인을 찾아내지만, 그 인프라가 왜 그렇게 설계되었는지까지는
+알 수 없는 위치였습니다. 설계는 제 몫이 아니었기 때문입니다. 이전 직장에서 AI 학습 환경을
+Docker 이미지로 표준화해 제공 시간을 40% 줄였을 때도 마찬가지였습니다. 자동화의 효과는
+분명했지만, 그 아래의 클라우드는 여전히 다른 사람이 설계한 것이었습니다.
 
-그러던 중 AWS SA Professional을 취득했는데, 합격의 기쁨보다 찜찜함이 먼저 왔습니다.
-시험에서는 VPC를 설계할 줄 알면서 정작 제 계정에는 VPC가 하나도 없었으니까요.
-이 간격을 메우려면 처음부터 끝까지 제 책임으로 직접 세워보는 수밖에 없다고
-생각했습니다. 그렇게 시작한 3주 동안 장애 7건을 만나 기록했고, 선택마다 이유를
-ADR로 남겼고, 같은 환경을 다섯 번 부수고 다시 세웠습니다. 관제 화면 너머로
-궁금하기만 했던 것들이, 이제는 제 손으로 만든 인프라 안에 있습니다.
+AWS SA Professional을 취득하고 나서 이 간극이 더 뚜렷해졌습니다. 시험에서는 VPC를 설계할 수
+있었지만, 제 계정에는 직접 만든 VPC가 하나도 없었습니다. 이 간극을 메우는 방법은 처음부터
+끝까지 제 책임으로 인프라를 세워 보는 것뿐이라고 판단했습니다. 그렇게 진행한 3주 동안
+장애 7건을 기록했고, 선택마다 근거를 ADR로 남겼으며, 같은 환경을 다섯 번 부수고 다시
+세웠습니다. 관제 화면 너머로 궁금하기만 했던 것들이, 이제는 제가 만든 인프라 안에 있습니다.
 
 ## 2. 프로젝트 개요
 
@@ -55,38 +54,38 @@ ADR로 남겼고, 같은 환경을 다섯 번 부수고 다시 세웠습니다. 
 ![런타임 아키텍처 구성도](docs/images/architecture.png)
 
 ```
-[배포 파이프라인 — 사람의 개입은 git push 하나]
+[배포 파이프라인: 사람의 개입은 git push 하나]
 git push ─▶ GitHub Actions ──(OIDC 키리스 인증)──▶ ECR
 (app repo)      └── 이미지 태그 자동 커밋 ─▶ manifest repo(비공개) ◀─ ArgoCD auto-sync ─▶ 무중단 롤링 배포
 ```
 
-- 컨트롤러·익스포터별 **IRSA**(IAM Roles for Service Accounts) 4종으로 파드 단위 최소 권한
-- RDS 보안그룹은 노드 SG 참조 방식으로 5432만 허용 — CIDR이 아닌 신원 기반 규칙
+- 컨트롤러·익스포터별 **IRSA**(IAM Roles for Service Accounts) 3종(ALB Controller, EBS CSI, cloudwatch-exporter)으로 파드 단위 최소 권한. CI는 별도의 GitHub OIDC Role
+- RDS 보안그룹은 노드 SG 참조 방식으로 5432만 허용: CIDR이 아닌 신원 기반 규칙
 
 ### 의도적으로 제외한 것 (과하지 않게)
 
-Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서는 복잡도 대비 이득이 없다고 판단.
+Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 복잡도 대비 이득이 없다고 판단했다.
 상세한 이유는 [docs/adr](docs/adr/)의 의사결정 기록 참고.
 
 ## 4. 실증 결과
 
-모든 항목은 구축 후 별도 세션에서 **재현 검증**까지 마쳤다 (최종: 2026-08-26 검증 회차).
+모든 항목은 구축 후 별도 세션에서 재현 검증까지 마쳤다 (최종 검증 2026-08-26).
 
 | 검증 | 내용 |
 |---|---|
 | **서비스 E2E** | 인터넷 → ALB → 파드 → Claude API 요약 생성 → RDS 저장/조회 전 구간 |
 | **GitOps 자동 배포** | `git push` 하나로 CI(OIDC) → ECR → 매니페스트 자동 커밋 → ArgoCD 무중단 롤링 → 신버전 응답 확인. 롤백은 매니페스트 repo `git revert` 한 번 |
 | **알람** | 파드 강제 재시작 → Prometheus 규칙 발화 → **Slack 실수신** (복구 통보까지) |
-| **수명주기 재현성** | `terraform apply` + 문서화된 9단계 루틴으로 전체 스택을 20분 내 복원 — **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
+| **수명주기 재현성** | `terraform apply` + 문서화된 9단계 루틴으로 전체 스택을 20분 내 복원, **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
 | **오토스케일링(HPA)** | 부하 투입 → CPU 306% 감지 → 파드 2→6 증설 → 부하 제거 → 안정화 창 후 2 복귀. 증설 중 Pending으로 HPA의 한계(노드 계층)까지 관찰 |
 
 ### 실증 스크린샷
 
 | | |
 |---|---|
-| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD** — Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA** — 2~6 레플리카, TARGETS 수집 중 |
-| <img src="docs/images/app%20pods%20monitoring1.png" width="100%"> **Grafana** — 부하 투입 직후 파드 CPU 급등 | <img src="docs/images/app%20pods%20monitoring4.png" width="100%"> **Grafana** — 증설·축소 사이클 전체 파형 |
-| <img src="docs/images/PostgresSQL%20DB.png" width="100%"> **RDS** — PostgreSQL 17.9 (현업 버전 정렬) | <img src="docs/images/eks%20cluster%20status.png" width="100%"> **EKS** — 클러스터 활성 상태 |
+| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD**: Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA**: 2~6 레플리카, TARGETS 수집 중 |
+| <img src="docs/images/app%20pods%20monitoring1.png" width="100%"> **Grafana**: 부하 투입 직후 파드 CPU 급등 | <img src="docs/images/app%20pods%20monitoring4.png" width="100%"> **Grafana**: 증설·축소 사이클 전체 파형 |
+| <img src="docs/images/PostgresSQL%20DB.png" width="100%"> **RDS**: PostgreSQL 17.9 (현업 버전 정렬) | <img src="docs/images/eks%20cluster%20status.png" width="100%"> **EKS**: 클러스터 활성 상태 |
 
 <details><summary>추가 스크린샷</summary>
 
@@ -98,7 +97,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 ## 5. Repo 구조
 
 ```
-├── terraform/          # 인프라 전체 (VPC, EKS, RDS, ECR, IRSA 4종, GHA OIDC, EBS CSI)
+├── terraform/          # 인프라 전체 (VPC, EKS, RDS, ECR, IRSA 3종, GHA OIDC, EBS CSI)
 ├── app/                # AI 텍스트 요약 API (FastAPI + Claude API, Dockerfile)
 ├── k8s/                # 초기 수동 배포용 매니페스트 (현재는 ArgoCD가 manifest repo 기준으로 관리)
 ├── argocd/             # ArgoCD Application 정의
@@ -111,7 +110,7 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
     ├── troubleshooting.md       # 장애 분석 7건 (S/A/B 등급, 증상/원인분석/해결/배운점)
     ├── worklog.md               # 날짜별 작업 로그 + 재기동/종료 루틴
     ├── Architecture.drawio      # 구성도 원본 (+ architecture.pdf)
-    ├── presentation.pptx        # 발표자료 20장 (발표 노트 내장)
+    ├── presentation.pptx        # 발표자료 19장 (발표 노트 내장)
     └── tech-stack · interview-prep · app-logic.md  # 기술스택 · 면접 · 앱 로직 정리
 ```
 
@@ -120,40 +119,40 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter — 이 규모에서�
 
 ## 6. 진행 현황
 
-- [x] **1주차 — 인프라 프로비저닝**: Terraform으로 VPC + EKS + RDS + ECR 구축, S3 원격 state
-- [x] **2주차 — 앱 배포**: 컨테이너화, kubectl 수동 배포, ALB Ingress Controller 연결
-- [x] **3주차 — CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
-- [x] **4주차 — 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
+- [x] **1주차: 인프라 프로비저닝**: Terraform으로 VPC + EKS + RDS + ECR 구축, S3 원격 state
+- [x] **2주차: 앱 배포**: 컨테이너화, kubectl 수동 배포, ALB Ingress Controller 연결
+- [x] **3주차: CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
+- [x] **4주차: 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
 - [x] **전체 리허설 (8/14)**: 재기동 → 전 기능 재검증 → 회수, 수명주기 완주
 - [x] **검증 회차 (8/26)**: HPA 2→6→2 사이클 실증 · PostgreSQL 17 전환 확인
-- [x] **5주차 — 마무리**: 문서 정리 · 발표자료(20장) · 아키텍처 구성도(draw.io) 완성
+- [x] **5주차: 마무리**: 문서 정리 · 발표자료(19장) · 아키텍처 구성도(draw.io) 완성
 
-**개선 백로그**: HPA 실동작 검증(매니페스트 반영 완료, CPU 50% 기준 2~6 레플리카) ·
-AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID ·
-앱 테스트 코드/CI 테스트 단계 · Cluster Autoscaler(보너스) — 상세는 [worklog.md](docs/worklog.md)
+**개선 백로그**: Cluster Autoscaler(HPA 증설 중 Pending 관찰이 근거) · AWS Budgets 예산 알람 ·
+Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테스트 코드/CI 테스트 단계.
+상세는 [worklog.md](docs/worklog.md)
 
 ## 7. 비용 전략
 
 상시 가동 시 월 약 $164 (EKS 컨트롤플레인 ~$73 + NAT ~$40 + Spot 노드 + RDS).
 
-- 작업하지 않는 날은 `terraform destroy`, 작업 시 `terraform apply` — **IaC이기에 가능한 운영 방식이며 그 자체가 검증 포인트**. 실제로 하루 종일 리허설한 날의 비용이 2천 원 미만
+- 작업하지 않는 날은 `terraform destroy`, 작업하는 날만 `terraform apply`. IaC라서 가능한 방식이고 그 자체가 재현성 검증이기도 하다. 하루 종일 리허설한 날의 비용이 2천 원 미만
 - **실측**: 7월 확정 청구서 기준 실사용 $1.27 · **실제 카드 청구 $0** (전액 크레딧 차감)
 - Terraform state는 S3 백엔드에 보관하여 destroy/apply 반복에도 안전
 - EKS 노드는 Spot 인스턴스, NAT Gateway는 단일 AZ 1개 ([ADR-003](docs/adr/003-single-nat.md))
-- destroy 후에는 state 밖 리소스(컨트롤러가 만든 ALB, PVC의 EBS)까지 전수검증 — 고아 리소스의 조용한 과금 차단
+- destroy 후에는 state 밖 리소스(컨트롤러가 만든 ALB, PVC의 EBS)까지 전수검증, 고아 리소스의 조용한 과금 차단
 - AWS Budgets 알람은 백로그 (Paid Plan 전환으로 지출 상한이 사라져 우선순위 상향)
 
 ## 8. 트러블슈팅과 의사결정
 
-**[트러블슈팅 기록](docs/troubleshooting.md)** — S/A/B 등급 분류, 증상/원인분석/해결/배운점 형식:
+**[트러블슈팅 기록](docs/troubleshooting.md)**: S/A/B 등급 분류, 증상/원인분석/해결/배운점 형식
 
-1. **[S]** EKS 노드그룹 CREATE_FAILED — AWS Free Plan의 인스턴스 타입 제약 (ASG 활동 로그로 규명)
-2. **[A]** CreateContainerConfigError — `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
-3. **[S]** GitHub Actions OIDC 인증 실패 — sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
-4. **[B]** CloudWatch 타임스탬프 함정 — exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
-5. **[A]** ArgoCD 토큰 오류 재발 — 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
-6. **[B]** 롤링 배포 직후 ALB 순단 — rollout 성공이 LB 무중단을 보장하지 않는다
-7. **[B]** Grafana CrashLoopBackOff — 보수적 리소스 제한의 한계 실측 (OOMKilled)
+1. **[S]** EKS 노드그룹 CREATE_FAILED: AWS Free Plan의 인스턴스 타입 제약 (ASG 활동 로그로 규명)
+2. **[A]** CreateContainerConfigError: `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
+3. **[S]** GitHub Actions OIDC 인증 실패: sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
+4. **[B]** CloudWatch 타임스탬프 함정: exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
+5. **[A]** ArgoCD 토큰 오류 재발: 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
+6. **[B]** 롤링 배포 직후 ALB 순단: rollout 성공이 LB 무중단을 보장하지 않는다
+7. **[B]** Grafana CrashLoopBackOff: 보수적 리소스 제한의 한계 실측 (OOMKilled)
 
 **의사결정 기록 (ADR)**:
 
@@ -161,6 +160,6 @@ AWS Budgets 예산 알람 활성화 · Pod Readiness Gate(롤링 무중단 보�
 - [ADR-002: 클러스터 내 PostgreSQL 대신 RDS를 선택한 이유](docs/adr/002-why-rds.md)
 - [ADR-003: NAT Gateway를 단일 AZ 1개로 구성한 이유](docs/adr/003-single-nat.md)
 
-**운영 문서**: [worklog.md](docs/worklog.md) — 날짜별 작업 로그, 실전 검증된 재기동 루틴(9단계)·종료 절차(4단계)
+**운영 문서**: [worklog.md](docs/worklog.md), 날짜별 작업 로그, 실전 검증된 재기동 루틴(9단계)·종료 절차(4단계)
 
-**발표자료**: [presentation.pptx](docs/presentation.pptx) — 20장, 발표 노트 내장 (아키텍처 · 시연 스크린샷 · 트러블슈팅 · 의사결정 · 비용)
+**발표자료**: [presentation.pptx](docs/presentation.pptx), 19장, 발표 노트 내장 (아키텍처, 시연 스크린샷, 트러블슈팅, 의사결정)

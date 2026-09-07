@@ -16,7 +16,7 @@
 | **ALB** | internet-facing 진입점 | 콘솔에서 만들지 않음 — **AWS Load Balancer Controller가 Ingress 선언을 보고 자동 생성**. `target-type: ip`로 파드 IP 직접 라우팅 |
 | **NAT Gateway** | 프라이빗 서브넷의 아웃바운드(ECR pull, Claude API 호출) | 비용 최적화로 단일 AZ 1개 (ADR-003). 파드의 공인 IP가 NAT EIP와 일치함을 E2E로 검증 |
 | **IAM — OIDC** | GitHub Actions의 AWS 인증 | **액세스 키를 GitHub에 저장하지 않는** 키리스 인증. sub 클레임 신형식(@ID) 이슈를 CloudTrail로 디버깅한 것이 대표 트러블슈팅 |
-| **IAM — IRSA** | 파드 단위 권한 부여 (4종: ALB Controller, EBS CSI, cloudwatch-exporter 등) | 노드 Role에 권한을 얹으면 모든 파드가 물려받는 문제를 회피 — **ServiceAccount 단위 최소 권한** |
+| **IAM — IRSA** | 파드 단위 권한 부여 (3종: ALB Controller, EBS CSI, cloudwatch-exporter) | 노드 Role에 권한을 얹으면 모든 파드가 물려받는 문제를 회피 — **ServiceAccount 단위 최소 권한** |
 | **CloudWatch** | RDS 지표 원천 | cloudwatch-exporter로 Prometheus에 유입시켜 **알람 경로를 Prometheus 하나로 단일화**. 타임스탬프 함정(`set_timestamp: false`) 트러블슈팅 |
 | **S3** | Terraform 원격 state 저장 | 버전 관리 + 퍼블릭 차단. destroy/apply 반복 운영의 전제 조건 |
 
