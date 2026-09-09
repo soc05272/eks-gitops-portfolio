@@ -1,7 +1,7 @@
 # cloudwatch-exporter용 IRSA — RDS 지표(CPUUtilization 등)는 CloudWatch에만 있어서
 # Prometheus가 직접 수집할 수 없다. exporter가 CloudWatch API로 읽어와 Prometheus
 # 형식으로 노출하면, 알람 경로가 하나로 통일된다(Prometheus → Alertmanager → Slack).
-# 네 번째 IRSA — 패턴은 동일: 전용 Role을 해당 ServiceAccount에만 바인딩.
+# 세 번째 IRSA(ALB Controller, EBS CSI에 이어) — 패턴은 동일: 전용 Role을 해당 ServiceAccount에만 바인딩.
 
 resource "aws_iam_policy" "cloudwatch_read" {
   name = "${var.project}-cloudwatch-read"

@@ -29,7 +29,7 @@ Docker 이미지로 표준화해 제공 시간을 40% 줄였을 때도 마찬가
 
 AWS SA Professional을 취득하고 나서 이 간극이 더 뚜렷해졌습니다. 시험에서는 VPC를 설계할 수
 있었지만, 제 계정에는 직접 만든 VPC가 하나도 없었습니다. 이 간극을 메우는 방법은 처음부터
-끝까지 제 책임으로 인프라를 세워 보는 것뿐이라고 판단했습니다. 그렇게 진행한 3주 동안
+끝까지 제 책임으로 인프라를 세워 보는 것뿐이라고 판단했습니다. 그렇게 진행한 5주 동안
 장애 7건을 기록했고, 선택마다 근거를 ADR로 남겼으며, 같은 환경을 다섯 번 부수고 다시
 세웠습니다. 관제 화면 너머로 궁금하기만 했던 것들이, 이제는 제가 만든 인프라 안에 있습니다.
 
@@ -40,7 +40,7 @@ AWS SA Professional을 취득하고 나서 이 간극이 더 뚜렷해졌습니�
 | 목표 | Claude API를 연동한 AI 텍스트 요약 서비스를 EKS 위에 GitOps 방식으로 배포하고, 모니터링/알람까지 구축 |
 | 기간 | 2026.07.24 ~ 2026.08 (주말·저녁 활용, 실작업 약 8일) |
 | 리전 | ap-northeast-2 (서울) |
-| 핵심 기술 | Terraform, EKS, HPA, RDS(PostgreSQL 17), GitHub Actions(OIDC), ArgoCD, Kustomize, Prometheus/Grafana, CloudWatch, Claude API |
+| 핵심 기술 | Terraform, EKS, HPA, RDS(PostgreSQL 17), GitHub Actions(OIDC), ArgoCD, Kustomize, Helm, Prometheus/Grafana, CloudWatch, FastAPI, Claude API |
 | 규모 | Terraform 리소스 78개 · 트러블슈팅 기록 7건 · ADR 3건 · 수명주기 재현 5회 |
 
 ### 왜 이 프로젝트인가
@@ -65,7 +65,9 @@ git push ─▶ GitHub Actions ──(OIDC 키리스 인증)──▶ ECR
 ### 의도적으로 제외한 것 (과하지 않게)
 
 Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 복잡도 대비 이득이 없다고 판단했다.
-상세한 이유는 [docs/adr](docs/adr/)의 의사결정 기록 참고.
+Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택한 것이며, 프로덕션 기준(Multi-AZ, AZ별 NAT)은
+[ADR-002](docs/adr/002-why-rds.md)·[ADR-003](docs/adr/003-single-nat.md)에 명시했다.
+제외 항목별 이유는 [tech-stack.md](docs/tech-stack.md)의 "의도적으로 뺀 것" 표 참고.
 
 ## 4. 실증 결과
 
@@ -74,16 +76,16 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 �
 | 검증 | 내용 |
 |---|---|
 | **서비스 E2E** | 인터넷 → ALB → 파드 → Claude API 요약 생성 → RDS 저장/조회 전 구간 |
-| **GitOps 자동 배포** | `git push` 하나로 CI(OIDC) → ECR → 매니페스트 자동 커밋 → ArgoCD 무중단 롤링 → 신버전 응답 확인. 롤백은 매니페스트 repo `git revert` 한 번 |
+| **GitOps 자동 배포** | `git push` 하나로 CI(OIDC) → ECR → 매니페스트 자동 커밋 → ArgoCD 롤링 배포 → 신버전(`/healthz`의 `version`) 응답 확인. 롤백은 매니페스트 repo `git revert` 한 번. 롤링 직후 ALB 순단 1회는 트러블슈팅 6번에 기록 |
 | **알람** | 파드 강제 재시작 → Prometheus 규칙 발화 → **Slack 실수신** (복구 통보까지) |
-| **수명주기 재현성** | `terraform apply` + 문서화된 9단계 루틴으로 전체 스택을 20분 내 복원, **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
+| **수명주기 재현성** | `terraform apply`(인프라 약 20분) + 문서화된 9단계 루틴으로 전체 스택 복원, **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
 | **오토스케일링(HPA)** | 부하 투입 → CPU 306% 감지 → 파드 2→6 증설 → 부하 제거 → 안정화 창 후 2 복귀. 증설 중 Pending으로 HPA의 한계(노드 계층)까지 관찰 |
 
 ### 실증 스크린샷
 
 | | |
 |---|---|
-| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD**: Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA**: 2~6 레플리카, TARGETS 수집 중 |
+| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD**: Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA**: min 2 / max 6, TARGETS `cpu: 2%/50%` (metrics-server 수집 정상) |
 | <img src="docs/images/app%20pods%20monitoring1.png" width="100%"> **Grafana**: 부하 투입 직후 파드 CPU 급등 | <img src="docs/images/app%20pods%20monitoring4.png" width="100%"> **Grafana**: 증설·축소 사이클 전체 파형 |
 | <img src="docs/images/PostgresSQL%20DB.png" width="100%"> **RDS**: PostgreSQL 17.9 (현업 버전 정렬) | <img src="docs/images/eks%20cluster%20status.png" width="100%"> **EKS**: 클러스터 활성 상태 |
 
@@ -91,17 +93,20 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 �
 
 <img src="docs/images/app%20pods%20monitoring2.png" width="70%">
 <img src="docs/images/app%20pods%20monitoring3.png" width="70%">
+<img src="docs/images/slack%20alert.png" width="40%">
+
+**Slack**: `AppPodRestarting` FIRING → RESOLVED 실수신 (커스텀 알람과 스택 기본 알람이 같은 채널로 유입)
 
 </details>
 
 ## 5. Repo 구조
 
 ```
-├── terraform/          # 인프라 전체 (VPC, EKS, RDS, ECR, IRSA 3종, GHA OIDC, EBS CSI)
+├── terraform/          # 인프라 전체 (VPC, EKS, RDS, ECR, IRSA 3종, GHA OIDC, EBS CSI). AWS Budgets는 budgets.tf.disabled로 보류
 ├── app/                # AI 텍스트 요약 API (FastAPI + Claude API, Dockerfile)
 ├── k8s/                # 초기 수동 배포용 매니페스트 (현재는 ArgoCD가 manifest repo 기준으로 관리)
 ├── argocd/             # ArgoCD Application 정의
-├── monitoring/         # kube-prometheus-stack values, 알람 규칙, gp3 StorageClass
+├── monitoring/         # kube-prometheus-stack values, cloudwatch-exporter values, 알람 규칙(PrometheusRule), gp3 StorageClass
 ├── scripts/            # 배포·Secret 생성 스크립트 (계정 고유값·비밀값을 repo 밖에 유지)
 ├── .github/workflows/  # CI: 빌드 → ECR 푸시 → manifest repo 태그 업데이트
 └── docs/
@@ -110,8 +115,9 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 �
     ├── troubleshooting.md       # 장애 분석 7건 (S/A/B 등급, 증상/원인분석/해결/배운점)
     ├── worklog.md               # 날짜별 작업 로그 + 재기동/종료 루틴
     ├── Architecture.drawio      # 구성도 원본 (+ architecture.pdf)
-    ├── presentation.pptx        # 발표자료 19장 (발표 노트 내장)
-    └── tech-stack · interview-prep · app-logic.md  # 기술스택 · 면접 · 앱 로직 정리
+    ├── presentation.pptx        # 발표자료 19장 (발표 노트 내장, PDF판: EKS_GitOps_Portfolio.pdf)
+    ├── presentation-outline · presentation-slides.md  # 발표 구성안 · 슬라이드 원고
+    └── tech-stack · interview-prep · app-logic.md     # 기술스택 · 면접 · 앱 로직 정리
 ```
 
 > k8s 매니페스트(Kustomize)는 GitOps 패턴에 따라 **별도 repo**(`eks-gitops-manifests`, 비공개)로 분리.
@@ -120,20 +126,23 @@ Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 �
 ## 6. 진행 현황
 
 - [x] **1주차: 인프라 프로비저닝**: Terraform으로 VPC + EKS + RDS + ECR 구축, S3 원격 state
-- [x] **2주차: 앱 배포**: 컨테이너화, kubectl 수동 배포, ALB Ingress Controller 연결
+- [x] **2주차: 앱 배포**: 컨테이너화, kubectl 수동 배포, AWS Load Balancer Controller로 ALB Ingress 연결
 - [x] **3주차: CI/CD**: GitHub Actions → ECR → ArgoCD auto-sync 파이프라인 완성
 - [x] **4주차: 관측성**: kube-prometheus-stack 설치, Grafana 대시보드, Slack 알람 2종(Pod 재시작, RDS CPU)
 - [x] **전체 리허설 (8/14)**: 재기동 → 전 기능 재검증 → 회수, 수명주기 완주
 - [x] **검증 회차 (8/26)**: HPA 2→6→2 사이클 실증 · PostgreSQL 17 전환 확인
 - [x] **5주차: 마무리**: 문서 정리 · 발표자료(19장) · 아키텍처 구성도(draw.io) 완성
 
-**개선 백로그**: Cluster Autoscaler(HPA 증설 중 Pending 관찰이 근거) · AWS Budgets 예산 알람 ·
-Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테스트 코드/CI 테스트 단계.
+**개선 백로그**: EKS 버전 상향(1.31은 확장 지원 요금 구간, 7장 비용 전략 참고) · Cluster Autoscaler(HPA 증설 중 Pending 관찰이 근거) ·
+AWS Budgets 예산 알람 · Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테스트 코드/CI 테스트 단계.
 상세는 [worklog.md](docs/worklog.md)
 
 ## 7. 비용 전략
 
-상시 가동 시 월 약 $164 (EKS 컨트롤플레인 ~$73 + NAT ~$40 + Spot 노드 + RDS).
+상시 가동 시 월 약 $164 (EKS 컨트롤플레인 ~$73 + NAT ~$40 + Spot 노드 + RDS). 단, 이 추정은 EKS 표준 지원
+버전($0.10/h) 기준이다. 현재 코드의 `cluster_version = "1.31"`은 2025-11-26에 표준 지원이 끝나 확장 지원
+요금($0.60/h)이 적용되므로, 상시 가동이라면 컨트롤플레인만 월 ~$438이 된다. 표준 지원 버전(2026-09 기준
+1.34~1.36)으로 상향하는 것을 백로그 1순위로 둔다.
 
 - 작업하지 않는 날은 `terraform destroy`, 작업하는 날만 `terraform apply`. IaC라서 가능한 방식이고 그 자체가 재현성 검증이기도 하다. 하루 종일 리허설한 날의 비용이 2천 원 미만
 - **실측**: 7월 확정 청구서 기준 실사용 $1.27 · **실제 카드 청구 $0** (전액 크레딧 차감)
@@ -144,13 +153,13 @@ Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테�
 
 ## 8. 트러블슈팅과 의사결정
 
-**[트러블슈팅 기록](docs/troubleshooting.md)**: S/A/B 등급 분류, 증상/원인분석/해결/배운점 형식
+**[트러블슈팅 기록](docs/troubleshooting.md)**: S/A/B 등급 분류, 증상/원인분석/해결/배운점 형식. 운영 관점(계층 · 원인 위치 · 조치 · 재발 방지) 분류표 포함
 
 1. **[S]** EKS 노드그룹 CREATE_FAILED: AWS Free Plan의 인스턴스 타입 제약 (ASG 활동 로그로 규명)
-2. **[A]** CreateContainerConfigError: `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
-3. **[S]** GitHub Actions OIDC 인증 실패: sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
-4. **[B]** CloudWatch 타임스탬프 함정: exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
-5. **[A]** ArgoCD 토큰 오류 재발: 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
+2. **[S]** GitHub Actions OIDC 인증 실패: sub 클레임에 숨어 있던 @ID (CloudTrail로 디버깅)
+3. **[A]** CreateContainerConfigError: `runAsNonRoot`는 이름 기반 USER를 검증하지 못한다
+4. **[A]** ArgoCD 토큰 오류 재발: 클립보드 경유 등록의 구조적 함정 (절차 자체를 교체)
+5. **[B]** CloudWatch 타임스탬프 함정: exporter 지표가 Prometheus 쿼리에 안 잡히던 문제
 6. **[B]** 롤링 배포 직후 ALB 순단: rollout 성공이 LB 무중단을 보장하지 않는다
 7. **[B]** Grafana CrashLoopBackOff: 보수적 리소스 제한의 한계 실측 (OOMKilled)
 
@@ -162,4 +171,4 @@ Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테�
 
 **운영 문서**: [worklog.md](docs/worklog.md), 날짜별 작업 로그, 실전 검증된 재기동 루틴(9단계)·종료 절차(4단계)
 
-**발표자료**: [presentation.pptx](docs/presentation.pptx), 19장, 발표 노트 내장 (아키텍처, 시연 스크린샷, 트러블슈팅, 의사결정)
+**발표자료**: [presentation.pptx](docs/presentation.pptx) · [PDF판](docs/EKS_GitOps_Portfolio.pdf), 19장, 발표 노트 내장 (아키텍처, 시연 스크린샷, 트러블슈팅, 의사결정)

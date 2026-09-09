@@ -1,27 +1,49 @@
 # 트러블슈팅 기록
 
-> 형식: 증상 → 원인 분석 → 해결 → 배운 점. 삽질한 날 바로 기록할 것 (나중에 쓰려면 다 잊어버린다).
+> 형식: 증상 → 원인 분석 → 해결 → 배운 점. 발생 당일에 기록한다.
 > 등급: **S** 구축·파이프라인 전면 불능 / **A** 서비스·배포 경로 중단 / **B** 부분 결손·단발 영향
+> 정렬: 등급 순(S → A → B), 같은 등급 안에서는 발생일 순
 
 ---
 
 ## 한눈에 보기
 
-| 등급 | 사례 | 한 줄 |
-|---|---|---|
-| **S** | EKS 노드그룹 CREATE_FAILED (7/29) | 38분 무증상 실패: 원인은 ASG 활동 로그에 |
-| **S** | GHA OIDC 인증 실패 (8/6) | sub 신형식 불일치: CloudTrail로 실측값 확인 |
-| **A** | 파드 CreateContainerConfigError (8/6) | runAsNonRoot는 이름 USER를 검증 못 한다 |
-| **A** | ArgoCD 토큰 오류 재발 (8/14) | 재발은 절차를 바꾸라는 신호 |
-| **B** | CloudWatch 타임스탬프 함정 (8/7) | 수집은 되는데 조회만 실패하는 시간축 문제 |
-| **B** | 롤링 직후 ALB 순단 (8/14) | rollout 성공 ≠ LB 무중단 |
-| **B** | Grafana OOMKilled (8/26) | 리소스 제한은 실사용 패턴으로 검증 |
+| # | 등급 | 사례 | 한 줄 |
+|---|---|---|---|
+| 1 | **S** | EKS 노드그룹 CREATE_FAILED (7/29) | 38분 무증상 실패: 원인은 ASG 활동 로그에 |
+| 2 | **S** | GHA OIDC 인증 실패 (8/6) | sub 신형식 불일치: CloudTrail로 실측값 확인 |
+| 3 | **A** | 파드 CreateContainerConfigError (8/6) | runAsNonRoot는 이름 USER를 검증 못 한다 |
+| 4 | **A** | ArgoCD 토큰 오류 재발 (8/14) | 재발은 절차를 바꾸라는 신호 |
+| 5 | **B** | CloudWatch 타임스탬프 함정 (8/7) | 수집은 되는데 조회만 실패하는 시간축 문제 |
+| 6 | **B** | 롤링 직후 ALB 순단 (8/14) | rollout 성공 ≠ LB 무중단 |
+| 7 | **B** | Grafana OOMKilled (8/26) | 리소스 제한은 실사용 패턴으로 검증 |
+
+## 운영 관점 분류
+
+같은 7건을 운영 엔지니어의 질문 순서(어느 계층인가 → 원인은 어디에 적혀 있었나 → 무엇을 바꿨나 → 재발은 어떻게 막았나)로 다시 정렬한 표.
+
+| # | 계층 | 원인이 적혀 있던 곳 | 조치 | 재발 방지 상태 |
+|---|---|---|---|---|
+| 1 | 인프라 프로비저닝 (EKS·ASG) | ASG 활동 로그 `describe-scaling-activities` | 계정 플랜 전환 (코드 변경 0) | 절차: 가용 인스턴스 타입 사전 확인 |
+| 2 | CI/CD 인증 (IAM · OIDC) | CloudTrail `userIdentity` | 신뢰 정책 직접 정의, ID 고정 | 코드 반영 (`github-actions.tf`) |
+| 3 | 워크로드 보안 설정 (이미지 × 매니페스트) | `kubectl describe pod` Events | `runAsUser: 1000` 명시 | 코드 반영 (k8s) · Dockerfile 숫자 UID는 백로그 |
+| 4 | 배포 자격증명 운영 (ArgoCD ↔ GitHub) | Secret 값의 길이·접두사 | 등록 절차 교체 + hard refresh | 절차 교체 (클립보드 제거) |
+| 5 | 관측성 파이프라인 (CloudWatch → Prometheus) | exporter `/metrics` 원본 | `set_timestamp: false` | 코드 반영 (`values-cloudwatch.yaml`) |
+| 6 | 배포·트래픽 (롤링 × ALB) | rollout과 ALB 타깃 전환의 비동기성 | Pod Readiness Gate | 백로그 |
+| 7 | 관측성 용량 (Grafana 리소스) | `lastState.terminated.reason` | 메모리 제한 256Mi → 512Mi | 코드 반영 (`values.yaml`) |
+
+운영 역량 기준으로 묶으면 세 갈래다.
+
+- **원인이 숨어 있는 장애의 진단 경로**: 1 (노드그룹 API는 조용하고 ASG 활동 로그에만 남는다), 2 (에러 한 줄뿐이고 실제 제시값은 CloudTrail에 있다), 7 (증상은 터널 끊김, 원인은 컨테이너 종료 사유)
+- **각자 옳은 설정의 조합 검증**: 3 (이미지 USER × runAsNonRoot), 5 (CloudWatch 원본 시각 × Prometheus 룩백), 6 (rollout 완료 × ALB 타깃 전환)
+- **재발을 절차와 코드로 차단**: 4 (사람이 지키기 어려운 절차를 제거), 7 (라이브 수정을 values.yaml에 반영), 2 (모듈 산출물을 믿지 않고 정책을 직접 코드화)
 
 ---
 
 ## [2026-07-29] EKS 노드그룹이 CREATE_FAILED: AWS Free Plan 계정의 인스턴스 타입 제약
 
 > **장애 등급: S**: 클러스터 구축 자체 불가, 38분간 무증상
+> **운영 관점**: 인프라 프로비저닝 · 원인 위치 ASG 활동 로그 · 조치 계정 플랜 전환(코드 변경 0) · 재발 방지 가용 타입 사전 확인 절차
 
 **증상**
 
@@ -74,25 +96,19 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
   --output table
 ```
 
-| 타입 | vCPU/메모리 | Spot 시간당 | 2대 합계 메모리 |
-|---|---|---|---|
-| t3.small | 2 / 2GB | ~$0.007 | 4GB |
-| **c7i-flex.large** | 2 / 4GB | ~$0.018 | **8GB** |
-| m7i-flex.large | 2 / 8GB | ~$0.044 | 16GB |
+가용 타입 중 `t3.medium`(2 vCPU / 4GB)과 등가인 대체재는 `c7i-flex.large` 하나였다. 두 가지 대응을 검토했다.
 
-두 가지 대응을 검토했다.
-
-1. **우회(노드 타입을 `c7i-flex.large`로 변경)**: `t3.medium`과 총 메모리(8GB)·비용($0.036 →
-   $0.037)이 사실상 동일한 대체재. 그러나 정책 안에서의 회피일 뿐이고, Spot + free-tier-eligible
-   조합이 실제로 기동되는지 미검증이었으며, 이후 주차의 ALB·EBS에서 같은 계정 정책에 또 막힐
-   위험이 남는다. (ARM `t4g.small`은 더 저렴하지만 AMI와 CI 빌드 아키텍처까지 연쇄 수정이라 제외)
+1. **우회(노드 타입을 `c7i-flex.large`로 변경)**: 메모리·시간당 비용이 사실상 동일한 대체재.
+   그러나 정책 안에서의 회피일 뿐이고, Spot + free-tier-eligible 조합이 실제로 기동되는지
+   미검증이었으며, 이후 주차의 ALB·EBS에서 같은 계정 정책에 또 막힐 위험이 남는다.
+   (ARM `t4g.small`은 더 저렴하지만 AMI와 CI 빌드 아키텍처까지 연쇄 수정이라 제외)
 2. **근본 해결(계정을 Paid Plan으로 전환)**: 인스턴스 타입 제약 자체가 사라진다. 크레딧은
-   이월되고($119.45), 12개월 프리티어가 추가로 열려 시간당 비용도 오히려 낮아진다.
+   이월되고 12개월 프리티어가 열려 시간당 비용도 오히려 낮아진다.
 
-**→ 2번 채택.** `aws freetier upgrade-account-plan` API가 존재하지만 결제 관련 변경이라 콘솔에서
-직접 전환했고, `accountPlanType: FREE → PAID` 전환을 API로 검증했다. **코드는 한 줄도 바꾸지
-않았고** `t3.medium` 그대로 재시도한 2차 apply가 성공했다(노드그룹 `ACTIVE`, 노드 2대 `Ready`).
-이후 destroy/apply 재기동에서도 재현 확인.
+**→ 2번 채택.** 결제 관련 변경이라 콘솔에서 전환한 뒤 `aws freetier get-account-plan-state`로
+`accountPlanType: FREE → PAID`를 검증했다. **코드는 한 줄도 바꾸지 않았고** `t3.medium` 그대로
+재시도한 2차 apply가 성공했다(노드그룹 `ACTIVE`, 노드 2대 `Ready`). 이후 destroy/apply
+재기동에서도 재현 확인.
 
 **배운 점**
 
@@ -107,66 +123,10 @@ aws ec2 describe-instance-types --region ap-northeast-2 \
 
 ---
 
-## [2026-08-06] 파드 CreateContainerConfigError: runAsNonRoot는 이름 기반 USER를 검증하지 못한다
-
-> **장애 등급: A**: 서비스 파드 전원 기동 불가 (첫 배포 블로커)
-
-**증상**
-
-2주차 첫 배포에서 파드 2개가 모두 `CreateContainerConfigError` 상태로 멈췄다.
-이미지 풀은 성공했고(`Successfully pulled image`), Secret도 정상 존재했다.
-
-```
-kubectl get pods -n app
-NAME                        READY   STATUS                       RESTARTS
-summarizer-7d6b5b86-mzjz9   0/1     CreateContainerConfigError   0
-```
-
-**원인 분석**
-
-`kubectl describe pod` / `kubectl get events`로 이벤트를 확인하니 원인이 그대로 적혀 있었다.
-
-```
-Error: container has runAsNonRoot and image has non-numeric user (appuser),
-cannot verify user is non-root
-```
-
-- Dockerfile은 `USER appuser`처럼 **이름**으로 실행 사용자를 지정했다
-- 매니페스트에는 보안 강화를 위해 `securityContext.runAsNonRoot: true`를 넣었다
-- kubelet은 컨테이너 시작 전에 "정말 non-root인가"를 검증하는데, 이미지 메타데이터에는
-  문자열 `appuser`만 있고 **UID가 없어서 root 여부를 판정할 수 없다**. 이름은 컨테이너
-  안의 `/etc/passwd`를 읽어야 UID로 환원되는데, 검증 시점은 컨테이너 시작 전이다
-- 그래서 kubelet은 "확인 불가 = 거부"로 처리하고 컨테이너 생성 자체를 막는다
-
-즉 **이미지도 매니페스트도 각각은 올바른데, 조합이 검증 불가능**한 경우다.
-
-**해결**
-
-파드 securityContext에 UID를 명시했다 (`useradd -m appuser`는 Debian 기반 이미지에서 UID 1000).
-
-```yaml
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000   # 이름 대신 숫자로 명시 → kubelet이 검증 가능
-```
-
-재빌드 없이 `kubectl apply`만으로 해결. 근본 대책은 Dockerfile에서부터 숫자 UID를 쓰는 것
-(`USER 1000` 또는 `useradd -u 1000`), 다음 이미지 빌드 때 반영 예정.
-
-**배운 점**
-
-- `CreateContainerConfigError`는 이미지 풀 성공 **이후**, 컨테이너 시작 **이전**의 설정
-  검증 단계 실패다. Secret/ConfigMap 누락이 흔한 원인이지만 securityContext 검증 실패도
-  여기에 속한다. 원인은 항상 `kubectl describe pod`의 Events에 명시된다
-- `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로**, Dockerfile의 `USER`가 이름이라면
-  매니페스트의 `runAsUser`로 보완하거나 Dockerfile을 숫자로 바꿔야 한다
-- 보안 설정은 "각자 올바름"이 아니라 "조합이 검증 가능함"까지 확인해야 한다
-
----
-
 ## [2026-08-06] GitHub Actions OIDC 인증 실패: sub 클레임에 숨어 있던 @ID
 
 > **장애 등급: S**: CI/CD 파이프라인 전면 불능, 원인이 에러에 드러나지 않음
+> **운영 관점**: CI/CD 인증(IAM·OIDC) · 원인 위치 CloudTrail `userIdentity` · 조치 신뢰 정책 직접 정의(ID 고정) · 재발 방지 코드 반영(`github-actions.tf`)
 
 **증상**
 
@@ -231,43 +191,69 @@ Condition = {
 
 ---
 
-## [2026-08-07] RDS 알람 지표가 Prometheus에 안 잡힘: CloudWatch 타임스탬프 함정
+## [2026-08-06] 파드 CreateContainerConfigError: runAsNonRoot는 이름 기반 USER를 검증하지 못한다
 
-> **장애 등급: B**: RDS 알람 경로 무력화 (지표 미유입, 서비스 영향 없음)
+> **장애 등급: A**: 서비스 파드 전원 기동 불가 (첫 배포 블로커)
+> **운영 관점**: 워크로드 보안 설정 · 원인 위치 `kubectl describe pod` Events · 조치 `runAsUser: 1000` · 재발 방지 코드 반영(k8s), Dockerfile 숫자 UID는 백로그
 
 **증상**
 
-cloudwatch-exporter를 설치하고 RDS CPU 알람 규칙을 배포했는데, Prometheus에서
-`aws_rds_cpuutilization_average`를 조회하면 결과가 비어 있었다. exporter 파드는 정상
-Running이고 에러 로그도 없었다.
+2주차 첫 배포에서 파드 2개가 모두 `CreateContainerConfigError` 상태로 멈췄다.
+이미지 풀은 성공했고(`Successfully pulled image`), Secret도 정상 존재했다.
+
+```
+kubectl get pods -n app
+NAME                        READY   STATUS                       RESTARTS
+summarizer-7d6b5b86-mzjz9   0/1     CreateContainerConfigError   0
+```
 
 **원인 분석**
 
-- exporter의 `/metrics`를 직접 curl해 보니 지표는 존재했고, **값 끝에 과거 타임스탬프**가
-  붙어 있었다. CloudWatch 원본 지표의 생성 시각을 그대로 전달하고 있던 것
-- CloudWatch 지표는 수 분 지연되어 집계되므로, 그 원본 타임스탬프는 항상 현재보다
-  과거다. Prometheus의 인스턴트 쿼리는 기본 **5분 룩백** 안의 샘플만 반환하므로,
-  지연이 룩백을 넘는 순간 "지표는 수집되는데 조회는 빈" 상태가 된다
-- 즉 수집(스크레이프)은 성공, 저장도 성공, **시간축이 어긋나 조회만 실패**하는 구조
+`kubectl describe pod` / `kubectl get events`로 이벤트를 확인하니 원인이 그대로 적혀 있었다.
+
+```
+Error: container has runAsNonRoot and image has non-numeric user (appuser),
+cannot verify user is non-root
+```
+
+- Dockerfile은 `USER appuser`처럼 **이름**으로 실행 사용자를 지정했다
+- 매니페스트에는 보안 강화를 위해 `securityContext.runAsNonRoot: true`를 넣었다
+- kubelet은 컨테이너 시작 전에 "정말 non-root인가"를 검증하는데, 이미지 메타데이터에는
+  문자열 `appuser`만 있고 **UID가 없어서 root 여부를 판정할 수 없다**. 이름은 컨테이너
+  안의 `/etc/passwd`를 읽어야 UID로 환원되는데, 검증 시점은 컨테이너 시작 전이다
+- 그래서 kubelet은 "확인 불가 = 거부"로 처리하고 컨테이너 생성 자체를 막는다
+
+즉 **이미지도 매니페스트도 각각은 올바른데, 조합이 검증 불가능**한 경우다.
 
 **해결**
 
-exporter 설정에 `set_timestamp: false`를 지정, CloudWatch 원본 시각 대신
-**스크레이프 시각**을 샘플에 붙이게 했다. 적용 직후 쿼리에 값이 잡혔고(CPU 3.8%),
-RDS CPU 알람 규칙까지 로드 확인.
+파드 securityContext에 UID를 명시했다 (`useradd -m appuser`는 Debian 기반 이미지에서 UID 1000).
+
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000   # 이름 대신 숫자로 명시 → kubelet이 검증 가능
+```
+
+재빌드 없이 `kubectl apply`만으로 해결. 근본 대책은 Dockerfile에서부터 숫자 UID를 쓰는 것
+(`USER 1000` 또는 `useradd -u 1000`). 이후 0.2.0·0.2.1 이미지 빌드는 매니페스트 보완만으로
+충분해 Dockerfile은 아직 `USER appuser` 그대로이며, 백로그(worklog ⑦)로 관리 중.
 
 **배운 점**
 
-- "지표가 안 보인다"의 원인이 수집 실패가 아닐 수 있다. **exporter의 `/metrics`를
-  직접 curl해 원본을 보면** 수집/저장/조회 중 어느 단계의 문제인지 바로 갈린다
-- 서로 다른 시스템을 잇는 지점에서는 **시간축(타임스탬프)의 소유권**이 암묵적 함정이
-  된다. 지연 집계형 소스(CloudWatch)는 원본 시각을 버리는 게 정답일 수 있다
+- `CreateContainerConfigError`는 이미지 풀 성공 **이후**, 컨테이너 시작 **이전**의 설정
+  검증 단계 실패다. Secret/ConfigMap 누락이 흔한 원인이지만 securityContext 검증 실패도
+  여기에 속한다. 원인은 항상 `kubectl describe pod`의 Events에 명시된다
+- `runAsNonRoot: true`를 쓸 거면 **UID는 숫자로**, Dockerfile의 `USER`가 이름이라면
+  매니페스트의 `runAsUser`로 보완하거나 Dockerfile을 숫자로 바꿔야 한다
+- 보안 설정은 "각자 올바름"이 아니라 "조합이 검증 가능함"까지 확인해야 한다
 
 ---
 
 ## [2026-08-14] ArgoCD `Invalid username or token` 재발: 클립보드 경유 등록의 구조적 함정
 
 > **장애 등급: A**: CD(ArgoCD) 경로 불능 · 재발성 (앱 가동은 유지)
+> **운영 관점**: 배포 자격증명 운영 · 원인 위치 Secret 값의 길이·접두사 · 조치 등록 절차 교체 + hard refresh · 재발 방지 절차 교체(클립보드 제거)
 
 **증상**
 
@@ -309,7 +295,7 @@ password에 들어간 것은 **등록 명령어 자체**였다. 진행 순서가
 필요한 모든 곳(ArgoCD Secret + CI용 GitHub secret)에 등록하고 즉시 폐기한다.
 
 ```bash
-read -s "TOKEN?PAT 붙여넣기: "; echo
+read -s "TOKEN?PAT 붙여넣기: "; echo   # zsh 문법. bash라면 read -r -s -p "PAT 붙여넣기: " TOKEN
 kubectl delete secret repo-eks-gitops-manifests -n argocd
 kubectl create secret generic repo-eks-gitops-manifests -n argocd \
   --from-literal=type=git \
@@ -339,9 +325,45 @@ unset TOKEN
 
 ---
 
+## [2026-08-07] RDS 알람 지표가 Prometheus에 안 잡힘: CloudWatch 타임스탬프 함정
+
+> **장애 등급: B**: RDS 알람 경로 무력화 (지표 미유입, 서비스 영향 없음)
+> **운영 관점**: 관측성 파이프라인 · 원인 위치 exporter `/metrics` 원본 · 조치 `set_timestamp: false` · 재발 방지 코드 반영(`values-cloudwatch.yaml`)
+
+**증상**
+
+cloudwatch-exporter를 설치하고 RDS CPU 알람 규칙을 배포했는데, Prometheus에서
+`aws_rds_cpuutilization_average`를 조회하면 결과가 비어 있었다. exporter 파드는 정상
+Running이고 에러 로그도 없었다.
+
+**원인 분석**
+
+- exporter의 `/metrics`를 직접 curl해 보니 지표는 존재했고, **값 끝에 과거 타임스탬프**가
+  붙어 있었다. CloudWatch 원본 지표의 생성 시각을 그대로 전달하고 있던 것
+- CloudWatch 지표는 수 분 지연되어 집계되므로, 그 원본 타임스탬프는 항상 현재보다
+  과거다. Prometheus의 인스턴트 쿼리는 기본 **5분 룩백** 안의 샘플만 반환하므로,
+  지연이 룩백을 넘는 순간 "지표는 수집되는데 조회는 빈" 상태가 된다
+- 즉 수집(스크레이프)은 성공, 저장도 성공, **시간축이 어긋나 조회만 실패**하는 구조
+
+**해결**
+
+exporter 설정에 `set_timestamp: false`를 지정, CloudWatch 원본 시각 대신
+**스크레이프 시각**을 샘플에 붙이게 했다. 적용 직후 쿼리에 값이 잡혔고(CPU 3.8%),
+RDS CPU 알람 규칙까지 로드 확인.
+
+**배운 점**
+
+- "지표가 안 보인다"의 원인이 수집 실패가 아닐 수 있다. **exporter의 `/metrics`를
+  직접 curl해 원본을 보면** 수집/저장/조회 중 어느 단계의 문제인지 바로 갈린다
+- 서로 다른 시스템을 잇는 지점에서는 **시간축(타임스탬프)의 소유권**이 암묵적 함정이
+  된다. 지연 집계형 소스(CloudWatch)는 원본 시각을 버리는 게 정답일 수 있다
+
+---
+
 ## [2026-08-14] 롤링 배포 직후 ALB 응답 실패 1회: rollout 성공이 LB 무중단을 보장하지 않는다
 
 > **장애 등급: B**: 단발 요청 실패 (무중단 설계의 빈틈 발견)
+> **운영 관점**: 배포·트래픽(롤링 × ALB) · 원인 위치 rollout과 ALB 타깃 전환의 비동기성 · 조치 Pod Readiness Gate · 재발 방지 백로그
 
 **증상**
 
@@ -363,7 +385,7 @@ ALB 경유 `curl -f /healthz`가 1회 HTTP 에러(exit 22)로 실패했다. 15�
 "이미 종료됐지만 아직 draining 중인 구 파드" 또는 "떴지만 ALB 헬스체크 미통과인 신규
 파드"로 요청이 가는 짧은 창이 생긴다. 관측된 실패 1회는 이 창에 들어간 요청이다.
 
-**해결 (백로그 등록: 발생 빈도가 낮아 5주차 이후 반영)**
+**해결 (백로그 등록: 발생 빈도가 낮아 5주차 마무리 이후로 미룸, 현재 미반영)**
 
 ALB 컨트롤러가 제공하는 **Pod Readiness Gate**가 표준 해법이다:
 
@@ -387,6 +409,7 @@ kubectl label namespace app elbv2.k8s.aws/pod-readiness-gate-inject=enabled
 ## [2026-08-26] Grafana CrashLoopBackOff: 보수적 리소스 제한의 한계 실측
 
 > **장애 등급: B**: 관측 구성요소 부분 장애 (자동 재시작으로 간헐 복구)
+> **운영 관점**: 관측성 용량 · 원인 위치 `lastState.terminated.reason` · 조치 메모리 제한 256Mi → 512Mi · 재발 방지 코드 반영(`values.yaml`)
 
 **증상**
 

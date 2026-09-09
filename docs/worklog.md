@@ -347,7 +347,7 @@ git push (version 0.2.0 커밋)
 - Webhook은 gitignore된 `monitoring/values-secret.yaml`로 분리 (backend.hcl 패턴)
 - **알람 ① AppPodRestarting** — 실전 검증: 파드 kill → FIRING → **Slack 수신 확인** (스크린샷 확보).
   `send_resolved`로 복구 통보까지. "수동 장애 대응 → 선제 감지"의 실증
-- **알람 ② RDSHighCPU** — RDS 지표는 CloudWatch에만 있어 **cloudwatch-exporter**(+네 번째 IRSA)로
+- **알람 ② RDSHighCPU** — RDS 지표는 CloudWatch에만 있어 **cloudwatch-exporter**(+세 번째 IRSA)로
   Prometheus에 유입시켜 알람 경로를 단일화. 규칙 로드·지표 유입(CPU 3.8%) 확인
 
 ### 트러블슈팅 (요약)
@@ -372,7 +372,7 @@ git push (version 0.2.0 커밋)
 
 ### 재기동 — 8단계 루틴 세 번째 실증
 
-apply(64→78개로 리소스 증가: IRSA 4종·EBS CSI·GHA OIDC 추가분) 후 루틴 ②~⑧ 순서대로 복구.
+apply(64→78개로 리소스 증가: IRSA 3종·EBS CSI 애드온·GHA OIDC Role 추가분) 후 루틴 ②~⑧ 순서대로 복구.
 특이사항 두 가지:
 
 - **이미지 두 태그 전략**: destroy로 비워진 ECR에 한 번 빌드한 이미지를
@@ -380,7 +380,7 @@ apply(64→78개로 리소스 증가: IRSA 4종·EBS CSI·GHA OIDC 추가분) �
   푸시 — ArgoCD 인수 시점까지 양쪽 참조가 모두 유효하도록
 - **PAT 클립보드 사고 재발**: 8/6 개행 사고의 대응책이던 pbpaste 방식이 오히려
   "명령 복사가 토큰을 덮어쓰는" 새 실패 모드를 만들었다. hidden prompt 방식으로 절차
-  자체를 교체, ArgoCD hard refresh로 복구. [troubleshooting.md](troubleshooting.md) 5번째 사례
+  자체를 교체, ArgoCD hard refresh로 복구. [troubleshooting.md](troubleshooting.md)의 ArgoCD 토큰 재발 사례
 
 ### 검증 결과 — 전 항목 통과
 
@@ -392,7 +392,7 @@ apply(64→78개로 리소스 증가: IRSA 4종·EBS CSI·GHA OIDC 추가분) �
 
 소소한 발견: slim 이미지에는 `kill` 실행 파일이 없어 `sh -c 'kill 1'`(셸 내장)로 재시작을
 유발해야 했다. 롤링 직후 ALB 응답 실패 1회도 관측 — 원인 분석과 표준 해법(Pod Readiness
-Gate)은 [troubleshooting.md](troubleshooting.md) 6번째 사례로 기록, 백로그 등록.
+Gate)은 [troubleshooting.md](troubleshooting.md)의 ALB 순단 사례로 기록, 백로그 등록.
 
 ### 회수 — 종료 절차 4단계
 
@@ -465,7 +465,7 @@ values.yaml에 실측 근거 주석과 함께 반영(`bf6950c`) — 라이브 �
 
 ## 현재 상태
 
-**전 주차 완료 + 산출물 완성.** 검증 5회(최종 8/26 — HPA·PG17 회차), 발표자료 20장,
+**전 주차 완료 + 산출물 완성.** 검증 5회(최종 8/26 — HPA·PG17 회차), 발표자료 19장,
 직접 그린 아키텍처 구성도(draw.io)까지 반영. 남은 것은 선택 백로그뿐.
 
 | 구분 | 상태 |
@@ -478,7 +478,7 @@ values.yaml에 실측 근거 주석과 함께 반영(`bf6950c`) — 라이브 �
 | 관측성 (4주차) | ✅ 알람 Slack 실수신 + Grafana OOM 실전 대응 |
 | **오토스케일링 (HPA)** | ✅ 2→6→2 사이클 실증, Pending으로 노드 계층 한계까지 관찰 |
 | 수명주기 | ✅ 재현 5회 (8/14 전체 리허설 · 8/26 HPA·PG17 검증 회차) |
-| 산출물 | ✅ 발표자료 20장(스크린샷·QR 내장) · 트러블슈팅 7건(S/A/B 등급) · ADR 3건 · 아키텍처 구성도 |
+| 산출물 | ✅ 발표자료 19장(스크린샷·QR 내장) · 트러블슈팅 7건(S/A/B 등급) · ADR 3건 · 아키텍처 구성도 |
 
 ## 알려진 이슈 / 다음에 처리할 것
 
@@ -495,7 +495,7 @@ Paid Plan 전환으로 지출 상한이 없어졌으므로 도입 우선순위�
 
 리허설에서 롤링 직후 ALB 응답 실패 1회 관측. `kubectl label namespace app
 elbv2.k8s.aws/pod-readiness-gate-inject=enabled` 한 줄로 도입 가능 — 상세는
-troubleshooting.md 6번째 사례.
+troubleshooting.md의 ALB 순단 사례.
 
 **⑦ Dockerfile 숫자 UID (runAsNonRoot 근본 대책, 2026-08-06 등록)**
 
@@ -568,12 +568,16 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n ku
 helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null
 helm install argocd argo/argo-cd -n argocd --create-namespace \
   --set dex.enabled=false --set notifications.enabled=false
-# repo credential: PAT는 평문 보관하지 않으므로 GitHub에서 Regenerate 후 등록
+# repo credential: PAT는 평문 보관하지 않으므로 GitHub에서 Regenerate 후 등록.
+# 클립보드를 거치지 않는다 (8/14 재발 사고 이후 절차 교체, troubleshooting.md ArgoCD 토큰 사례)
+#   read -s "TOKEN?PAT 붙여넣기: "; echo        # zsh. bash는 read -r -s -p "PAT 붙여넣기: " TOKEN
 #   kubectl create secret generic repo-eks-gitops-manifests -n argocd \
 #     --from-literal=type=git --from-literal=url=https://github.com/soc05272/eks-gitops-manifests.git \
-#     --from-literal=username=x-access-token --from-literal=password=<PAT(개행 없이!)>
+#     --from-literal=username=x-access-token --from-literal=password="$TOKEN"
 #   kubectl label secret repo-eks-gitops-manifests -n argocd argocd.argoproj.io/secret-type=repository
-#   (gh secret set MANIFEST_REPO_TOKEN 도 새 값으로 갱신)
+#   printf '%s' "$TOKEN" | gh secret set MANIFEST_REPO_TOKEN --repo soc05272/eks-gitops-portfolio
+#   unset TOKEN
+#   등록 후 Application이 Unknown에 머물면: kubectl annotate application summarizer -n argocd argocd.argoproj.io/refresh=hard --overwrite
 kubectl apply -f argocd/application.yaml
 
 # ⑧ 모니터링 재설치 (4주차부터)
