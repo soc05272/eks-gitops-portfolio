@@ -25,6 +25,7 @@ resource "aws_db_instance" "postgres" {
 
   allocated_storage = 20
   storage_type = "gp3"
+  storage_encrypted = true # 저장 암호화 (AWS 관리형 KMS 키, 추가 비용 없음)
 
   db_name = "app"
   username = var.db_username

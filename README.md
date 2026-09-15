@@ -60,7 +60,8 @@ git push ─▶ GitHub Actions ──(OIDC 키리스 인증)──▶ ECR
 ```
 
 - 컨트롤러·익스포터별 **IRSA**(IAM Roles for Service Accounts) 3종(ALB Controller, EBS CSI, cloudwatch-exporter)으로 파드 단위 최소 권한. CI는 별도의 GitHub OIDC Role
-- RDS 보안그룹은 노드 SG 참조 방식으로 5432만 허용: CIDR이 아닌 신원 기반 규칙
+- RDS 보안그룹은 노드 SG 참조 방식으로 5432만 허용: CIDR이 아닌 신원 기반 규칙. 저장 데이터는 KMS로 암호화
+- 노출면 제한: EKS API 퍼블릭 엔드포인트와 ALB 인바운드 모두 허용 CIDR(작업 PC 공인 IP)로 제한. 인증 없는 공개 API가 크레딧 소모 경로가 되지 않도록
 
 ### 의도적으로 제외한 것 (과하지 않게)
 
@@ -97,7 +98,7 @@ Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택�
 ├── app/                # AI 텍스트 요약 API (FastAPI + Claude API, Dockerfile)
 ├── k8s/                # 초기 수동 배포용 매니페스트 (현재는 ArgoCD가 manifest repo 기준으로 관리)
 ├── argocd/             # ArgoCD Application 정의
-├── monitoring/         # kube-prometheus-stack values, cloudwatch-exporter values, 알람 규칙(PrometheusRule), gp3 StorageClass
+├── monitoring/         # kube-prometheus-stack values, cloudwatch-exporter values, 알람 규칙(PrometheusRule), gp3 StorageClass, Alertmanager Slack 라우팅 example
 ├── scripts/            # 배포·Secret 생성 스크립트 (계정 고유값·비밀값을 repo 밖에 유지)
 ├── .github/workflows/  # CI: 빌드 → ECR 푸시 → manifest repo 태그 업데이트
 └── docs/

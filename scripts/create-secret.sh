@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # 앱 Secret(summarizer-secrets) 생성 스크립트.
-# - DATABASE_URL : terraform.tfvars의 db_password + terraform output의 RDS 엔드포인트로 조립
+# - DATABASE_URL : db_password(TF_VAR_db_password 환경변수 우선, 없으면 terraform.tfvars) + terraform output의 RDS 엔드포인트로 조립
 # - ANTHROPIC_API_KEY : 환경변수로 받거나, 없으면 프롬프트로 입력 (화면에 표시되지 않음)
 # 비밀값이 셸 히스토리나 repo에 남지 않도록 하기 위한 스크립트이며, 스크립트 자체에는 비밀값이 없다.
 set -euo pipefail
 
 cd "$(dirname "$0")/../terraform"
 
-DB_PASSWORD=$(grep -E '^db_password' terraform.tfvars | sed 's/.*"\(.*\)"/\1/')
+DB_PASSWORD="${TF_VAR_db_password:-$(grep -E '^db_password' terraform.tfvars 2>/dev/null | sed 's/.*"\(.*\)"/\1/' || true)}"
+if [ -z "$DB_PASSWORD" ]; then
+  echo "db_password를 찾을 수 없습니다: TF_VAR_db_password 환경변수 또는 terraform/terraform.tfvars에 지정하세요" >&2
+  exit 1
+fi
 RDS_ENDPOINT=$(terraform output -raw rds_endpoint) # host:5432 형태
 
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then

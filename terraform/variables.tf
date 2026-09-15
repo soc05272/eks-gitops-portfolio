@@ -36,9 +36,14 @@ variable "db_username" {
 }
 
 variable "db_password" {
-  description = "RDS 마스터 비밀번호 (tfvars에 두지 말고 TF_VAR_db_password 환경변수로 주입)"
+  description = "RDS 마스터 비밀번호. TF_VAR_db_password 환경변수 또는 terraform.tfvars(gitignore 대상)로 주입"
   type = string
   sensitive = true
+}
+
+variable "api_allowed_cidrs" {
+  description = "EKS API 퍼블릭 엔드포인트 접근을 허용할 CIDR 목록 (작업 PC의 공인 IP/32). tfvars로 주입"
+  type = list(string)
 }
 
 variable "monthly_budget_usd" {

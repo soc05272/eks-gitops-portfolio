@@ -8,8 +8,10 @@ module "eks" {
   vpc_id = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  # 포트폴리오 환경이므로 로컬에서 kubectl 접근을 위해 퍼블릭 엔드포인트 허용
+  # 포트폴리오 환경이므로 로컬에서 kubectl 접근을 위해 퍼블릭 엔드포인트 허용.
+  # 단, 인터넷 전체가 아니라 허용 CIDR(작업 PC의 공인 IP)에서만. 클러스터 내부(ArgoCD 등)는 프라이빗 엔드포인트를 쓴다.
   cluster_endpoint_public_access = true
+  cluster_endpoint_public_access_cidrs = var.api_allowed_cidrs
 
   # terraform을 실행한 IAM 주체에게 클러스터 관리자 권한 부여
   enable_cluster_creator_admin_permissions = true

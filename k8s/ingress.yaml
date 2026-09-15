@@ -8,6 +8,9 @@ metadata:
     # target-type: ip — 파드 IP로 직접 라우팅 (VPC CNI라 가능, NodePort 홉 제거)
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # 인바운드 허용 CIDR — 인증 없는 공개 API라 주소만 알면 Claude API 크레딧을 소모시킬 수 있다.
+    # <ALLOWED-CIDR>는 scripts/deploy.sh가 치환한다 (ALLOWED_CIDR 환경변수, 기본값은 현재 공인 IP/32).
+    alb.ingress.kubernetes.io/inbound-cidrs: <ALLOWED-CIDR>
 spec:
   ingressClassName: alb
   rules:

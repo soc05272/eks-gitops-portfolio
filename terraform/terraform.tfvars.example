@@ -1,8 +1,11 @@
 # terraform.tfvars로 복사해서 실제 값 기입 (terraform.tfvars는 gitignore 대상 — 절대 커밋 금지)
 #   cp terraform.tfvars.example terraform.tfvars
 
-# RDS 마스터 비밀번호 — 영숫자 16자 이상 권장
+# RDS 마스터 비밀번호 — 영숫자 16자 이상 권장. 대신 TF_VAR_db_password 환경변수로 주입해도 된다
 db_password = "CHANGE-ME"
+
+# EKS API 퍼블릭 엔드포인트 접근을 허용할 CIDR — 작업 PC의 공인 IP (curl -s https://checkip.amazonaws.com 으로 확인)
+api_allowed_cidrs = ["203.0.113.10/32"]
 
 # 예산 알림 수신 이메일 (budgets.tf 활성화 시 사용 — 비활성 상태에서도 값은 필요)
 budget_alert_email = "you@example.com"
