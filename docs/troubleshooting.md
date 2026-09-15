@@ -237,7 +237,7 @@ securityContext:
 
 재빌드 없이 `kubectl apply`만으로 해결. 근본 대책은 Dockerfile에서부터 숫자 UID를 쓰는 것
 (`USER 1000` 또는 `useradd -u 1000`). 이후 0.2.0·0.2.1 이미지 빌드는 매니페스트 보완만으로
-충분해 Dockerfile은 아직 `USER appuser` 그대로이며, 백로그(worklog ⑦)로 관리 중.
+충분해 Dockerfile은 아직 `USER appuser` 그대로이며, 백로그로 관리 중.
 
 **배운 점**
 

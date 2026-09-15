@@ -51,7 +51,7 @@ AWS SA Professional을 취득하고 나서 이 간극이 더 뚜렷해졌습니�
 
 ## 3. 아키텍처
 
-![런타임 아키텍처 구성도](docs/images/architecture.png)
+![런타임 아키텍처 구성도](docs/architecture.png)
 
 ```
 [배포 파이프라인: 사람의 개입은 git push 하나]
@@ -67,7 +67,6 @@ git push ─▶ GitHub Actions ──(OIDC 키리스 인증)──▶ ECR
 Istio 등 서비스 메시, 멀티 클러스터, Karpenter는 이 규모에서 복잡도 대비 이득이 없다고 판단했다.
 Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택한 것이며, 프로덕션 기준(Multi-AZ, AZ별 NAT)은
 [ADR-002](docs/adr/002-why-rds.md)·[ADR-003](docs/adr/003-single-nat.md)에 명시했다.
-제외 항목별 이유는 [tech-stack.md](docs/tech-stack.md)의 "의도적으로 뺀 것" 표 참고.
 
 ## 4. 실증 결과
 
@@ -78,26 +77,18 @@ Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택�
 | **서비스 E2E** | 인터넷 → ALB → 파드 → Claude API 요약 생성 → RDS 저장/조회 전 구간 |
 | **GitOps 자동 배포** | `git push` 하나로 CI(OIDC) → ECR → 매니페스트 자동 커밋 → ArgoCD 롤링 배포 → 신버전(`/healthz`의 `version`) 응답 확인. 롤백은 매니페스트 repo `git revert` 한 번. 롤링 직후 ALB 순단 1회는 트러블슈팅 6번에 기록 |
 | **알람** | 파드 강제 재시작 → Prometheus 규칙 발화 → **Slack 실수신** (복구 통보까지) |
-| **수명주기 재현성** | `terraform apply`(인프라 약 20분) + 문서화된 9단계 루틴으로 전체 스택 복원, **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
+| **수명주기 재현성** | `terraform apply`(인프라 약 20분) + 재기동 9단계 루틴으로 전체 스택 복원, **5회 실증**. 종료 시 4단계 절차 + 13개 항목 전수검증으로 잔여물 0, 과금 $0 |
 | **오토스케일링(HPA)** | 부하 투입 → CPU 306% 감지 → 파드 2→6 증설 → 부하 제거 → 안정화 창 후 2 복귀. 증설 중 Pending으로 HPA의 한계(노드 계층)까지 관찰 |
 
-### 실증 스크린샷
+### 실증 화면
 
-| | |
+실증 스크린샷은 [발표자료 PDF](docs/EKS_GitOps_Portfolio.pdf)에 실려 있다.
+
+| 페이지 | 화면 |
 |---|---|
-| <img src="docs/images/ArgoCD.png" width="100%"> **ArgoCD**: Synced/Healthy 리소스 트리 (hpa 포함) | <img src="docs/images/HPA%20Status.png" width="100%"> **HPA**: min 2 / max 6, TARGETS `cpu: 2%/50%` (metrics-server 수집 정상) |
-| <img src="docs/images/app%20pods%20monitoring1.png" width="100%"> **Grafana**: 부하 투입 직후 파드 CPU 급등 | <img src="docs/images/app%20pods%20monitoring4.png" width="100%"> **Grafana**: 증설·축소 사이클 전체 파형 |
-| <img src="docs/images/PostgresSQL%20DB.png" width="100%"> **RDS**: PostgreSQL 17.9 (현업 버전 정렬) | <img src="docs/images/eks%20cluster%20status.png" width="100%"> **EKS**: 클러스터 활성 상태 |
-
-<details><summary>추가 스크린샷</summary>
-
-<img src="docs/images/app%20pods%20monitoring2.png" width="70%">
-<img src="docs/images/app%20pods%20monitoring3.png" width="70%">
-<img src="docs/images/slack%20alert.png" width="40%">
-
-**Slack**: `AppPodRestarting` FIRING → RESOLVED 실수신 (커스텀 알람과 스택 기본 알람이 같은 채널로 유입)
-
-</details>
+| 9 | **ArgoCD**: Synced/Healthy 리소스 트리 (hpa 포함), auto-sync 활성 |
+| 10 | **Slack**: `AppPodRestarting` FIRING → RESOLVED 실수신 |
+| 11 | **HPA**: `kubectl get hpa/pods` 2→6 증설 · **Grafana**: 부하 투입 후 파드 CPU 파형 |
 
 ## 5. Repo 구조
 
@@ -111,13 +102,11 @@ Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택�
 ├── .github/workflows/  # CI: 빌드 → ECR 푸시 → manifest repo 태그 업데이트
 └── docs/
     ├── adr/                     # 의사결정 기록 3건
-    ├── images/                  # 실증 스크린샷 · 아키텍처 구성도
-    ├── troubleshooting.md       # 장애 분석 7건 (S/A/B 등급, 증상/원인분석/해결/배운점)
-    ├── worklog.md               # 날짜별 작업 로그 + 재기동/종료 루틴
-    ├── Architecture.drawio      # 구성도 원본 (+ architecture.pdf)
-    ├── presentation.pptx        # 발표자료 19장 (발표 노트 내장, PDF판: EKS_GitOps_Portfolio.pdf)
-    ├── presentation-outline · presentation-slides.md  # 발표 구성안 · 슬라이드 원고
-    └── tech-stack · interview-prep · app-logic.md     # 기술스택 · 면접 · 앱 로직 정리
+    ├── architecture.png         # 런타임 아키텍처 구성도 (+ architecture.pdf)
+    ├── architecture.pdf
+    ├── troubleshooting.md       # 장애 분석 7건 (S/A/B 등급, 증상/원인분석/해결/배운점, 운영 관점 분류표)
+    ├── presentation.pptx        # 발표자료 19장 (발표 노트 내장)
+    └── EKS_GitOps_Portfolio.pdf # 발표자료 PDF판
 ```
 
 > k8s 매니페스트(Kustomize)는 GitOps 패턴에 따라 **별도 repo**(`eks-gitops-manifests`, 비공개)로 분리.
@@ -135,7 +124,7 @@ Single-AZ RDS와 단일 NAT도 비용 통제를 위해 인지한 상태로 택�
 
 **개선 백로그**: EKS 버전 상향(1.31은 확장 지원 요금 구간, 7장 비용 전략 참고) · Cluster Autoscaler(HPA 증설 중 Pending 관찰이 근거) ·
 AWS Budgets 예산 알람 · Pod Readiness Gate(롤링 무중단 보강) · Dockerfile 숫자 UID · 앱 테스트 코드/CI 테스트 단계.
-상세는 [worklog.md](docs/worklog.md)
+각 항목의 근거는 [트러블슈팅 기록](docs/troubleshooting.md)에 있다.
 
 ## 7. 비용 전략
 
@@ -168,7 +157,5 @@ AWS Budgets 예산 알람 · Pod Readiness Gate(롤링 무중단 보강) · Dock
 - [ADR-001: 배포 도구로 ArgoCD를 선택한 이유](docs/adr/001-why-argocd.md)
 - [ADR-002: 클러스터 내 PostgreSQL 대신 RDS를 선택한 이유](docs/adr/002-why-rds.md)
 - [ADR-003: NAT Gateway를 단일 AZ 1개로 구성한 이유](docs/adr/003-single-nat.md)
-
-**운영 문서**: [worklog.md](docs/worklog.md), 날짜별 작업 로그, 실전 검증된 재기동 루틴(9단계)·종료 절차(4단계)
 
 **발표자료**: [presentation.pptx](docs/presentation.pptx) · [PDF판](docs/EKS_GitOps_Portfolio.pdf), 19장, 발표 노트 내장 (아키텍처, 시연 스크린샷, 트러블슈팅, 의사결정)
